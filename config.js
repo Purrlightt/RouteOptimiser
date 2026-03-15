@@ -1,5 +1,0 @@
-// config.js
-const CONFIG = {
-    MAPTILER_KEY: 'CcM6ytJu15GKv69XcBwC',
-    ORS_KEY: 'eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6IjMzNWI2ZDBlMTk3YzRhZTZiNzkwZTQwYmEwNDhlOTM5IiwiaCI6Im11cm11cjY0In0'
-};
