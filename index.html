@@ -2,8 +2,8 @@
 <html lang="de">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Garbsen CyberRoute</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>CityPost CyberSync</title>
     <link rel="stylesheet" href="style.css">
     <script src="config.js"></script>
     <script src="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.js"></script>
@@ -15,9 +15,9 @@
 
 <div id="ui-wrapper">
     <div class="cyber-card">
-        <textarea id="addressInput" placeholder="ENTER STOPS..."></textarea>
+        <textarea id="addressInput" placeholder="LIST STOPS..."></textarea>
         <div class="btn-row">
-            <button class="btn-primary" onclick="startDelivery()">Initialize Route</button>
+            <button class="btn-primary" onclick="startDelivery()">SYNC ROUTE</button>
             <button class="btn-secondary" onclick="toggleSatellite()">SAT</button>
         </div>
     </div>
@@ -31,19 +31,21 @@
         container: 'map',
         style: `https://api.maptiler.com/maps/streets-v2-dark/style.json?key=${TILER_KEY}`,
         center: [9.605, 52.418],
-        zoom: 14,
-        pitch: 50 // Futuristic 3D tilt
+        zoom: 15,
+        pitch: 60,
+        bearing: 0
     });
 
+    // High Precision Navigation Tracking
     const geolocate = new maplibregl.GeolocateControl({
         positionOptions: { enableHighAccuracy: true },
-        trackUserLocation: true, showUserHeading: true
+        trackUserLocation: true,
+        showUserHeading: true // This enables the Compass/Rotating Map
     });
-    map.addControl(geolocate, 'bottom-right');
+    map.addControl(geolocate, 'top-right');
 
     let markers = [];
 
-    // Load saved route
     window.onload = () => {
         const saved = localStorage.getItem('last_route');
         if (saved) document.getElementById('addressInput').value = saved;
@@ -59,29 +61,26 @@
         markers = [];
 
         for (let line of lines) {
-            // Priority Search: We add "Alt-Garbsen" to help find Lübecker Str correctly
+            // Priority geocoding for Alt-Garbsen
             let searchQuery = line + ', Garbsen, Germany';
-            if (line.toLowerCase().includes('lübecker')) searchQuery = line + ', 30823 Alt-Garbsen, Germany';
+            if (line.toLowerCase().includes('lübecker')) searchQuery = line + ', 30823 Garbsen, Germany';
 
             const url = `https://api.maptiler.com/geocoding/${encodeURIComponent(searchQuery)}.json?key=${TILER_KEY}&fuzzy=false`;
             
             try {
                 const resp = await fetch(url);
                 const data = await resp.json();
-                
                 if (data.features && data.features.length > 0) {
                     const pt = data.features[0].center;
                     coords.push(pt);
-
                     const el = document.createElement('div');
                     el.className = 'house-marker';
                     el.innerHTML = `<span>${line.match(/\d+/) || '!'}</span>`;
-                    
                     const m = new maplibregl.Marker(el).setLngLat(pt).addTo(map);
-                    el.onclick = () => { if(confirm("DELIVERY COMPLETE?")) m.remove(); };
+                    el.onclick = () => { if(confirm("DELIVERED?")) m.remove(); };
                     markers.push(m);
                 }
-            } catch (e) { console.error("Geocode Error", e); }
+            } catch (e) { console.error(e); }
         }
 
         if (coords.length > 1) drawPath(coords);
@@ -105,17 +104,13 @@
                 id: 'route',
                 type: 'line',
                 source: 'route',
-                paint: { 
-                    'line-color': '#00f2ff', 
-                    'line-width': 5,
-                    'line-blur': 2 // Glow effect
-                }
+                paint: { 'line-color': '#00f2ff', 'line-width': 6 }
             });
         }
         
         const bounds = new maplibregl.LngLatBounds();
         coords.forEach(c => bounds.extend(c));
-        map.fitBounds(bounds, { padding: 80 });
+        map.fitBounds(bounds, { padding: 100 });
     }
 
     function toggleSatellite() {
@@ -127,7 +122,7 @@
 
     map.on('load', () => { 
         geolocate.trigger();
-        map.resize(); 
+        setTimeout(() => map.resize(), 500); // Forces the map to recognize UI size
     });
 </script>
 </body>
