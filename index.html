@@ -154,8 +154,15 @@
         document.getElementById('status').innerText = "Optimizing Route...";
 
         try {
-            // STEP 1: Authorization Header Fix applied here
-            const authHeader = 'Bearer ' + O_KEY.trim(); 
+            // ORS usually prefers JUST the key, no "Bearer " text.
+            const authHeader = O_KEY.trim(); 
+
+            // 1. OPTIMIZATION REQUEST
+            const optPayload = {
+                jobs: queue.map((item, index) => ({ id: index, location: item.coords })),
+                // Added "end: userLoc" so the API knows it's a round trip back to where you started
+                vehicles: [{ id: 0, profile: "cycling-regular", start: userLoc, end: userLoc }]
+            };
 
             const optResp = await fetch(`https://api.openrouteservice.org/optimization`, {
                 method: 'POST',
@@ -163,21 +170,20 @@
                     'Content-Type': 'application/json',
                     'Authorization': authHeader 
                 },
-                body: JSON.stringify({
-                    jobs: queue.map((item, index) => ({ id: index, location: item.coords })),
-                    vehicles: [{ id: 0, profile: "cycling-regular", start: userLoc }]
-                })
+                body: JSON.stringify(optPayload)
             });
 
             if (!optResp.ok) {
                 const errText = await optResp.text();
-                throw new Error("API Blocked Request: " + errText);
+                throw new Error(`OPTIMIZATION ERROR (${optResp.status}):\n${errText}`);
             }
 
             const optData = await optResp.json();
+            
+            // Extract the sorted coordinates
             const optimizedCoords = optData.routes[0].steps.map(s => s.location);
 
-            // STEP 2: Directions
+            // 2. DIRECTIONS REQUEST (Drawing the blue line)
             const routeResp = await fetch(`https://api.openrouteservice.org/v2/directions/cycling-regular/geojson`, {
                 method: 'POST',
                 headers: { 
@@ -187,10 +193,14 @@
                 body: JSON.stringify({ coordinates: optimizedCoords })
             });
             
-            if (!routeResp.ok) throw new Error("Directions API Failed");
+            if (!routeResp.ok) {
+                const errText = await routeResp.text();
+                throw new Error(`DIRECTIONS ERROR (${routeResp.status}):\n${errText}`);
+            }
             
             const routeData = await routeResp.json();
 
+            // 3. DRAW TO MAP
             if (map.getSource('route')) map.getSource('route').setData(routeData);
             else {
                 map.addSource('route', { type: 'geojson', data: routeData });
@@ -204,8 +214,9 @@
 
         } catch (e) { 
             console.error(e);
-            alert("BROWSER BLOCKED THE REQUEST: \n\n1. Check if you have an AdBlocker on.\n2. Ensure you are on HTTPS.\n3. Verify your ORS key.");
-            document.getElementById('status').innerText = "CORS / Fetch Failed"; 
+            // THIS WILL NOW TELL YOU EXACTLY WHAT IS WRONG
+            alert(e.message); 
+            document.getElementById('status').innerText = "Routing Failed"; 
         }
     }
 
