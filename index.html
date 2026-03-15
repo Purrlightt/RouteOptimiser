@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>CityPost Turbo</title>
+    <title>CityPost Turbo V2</title>
     <link rel="stylesheet" href="style.css">
     <script src="config.js"></script>
     <script src="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.js"></script>
@@ -14,7 +14,7 @@
         <div id="map"></div>
         <div id="ui-panel">
             <div class="input-group">
-                <input type="text" id="streetInput" placeholder="Lübecker Straße 3">
+                <input type="text" id="streetInput" placeholder="Street + No">
                 <select id="plzSelect">
                     <option value="30823">30823</option>
                     <option value="30826">30826</option>
@@ -25,7 +25,8 @@
             <div id="addressQueue" class="queue-list"></div>
             <div class="btn-row">
                 <button class="btn-clear" onclick="queue=[];renderUI();">Clear</button>
-                <button class="btn-go" onclick="startOptimalRoute()">Optimize & Start</button>
+                <button class="btn-load" onclick="loadPins()">Load Pins</button>
+                <button class="btn-go" onclick="startOptimalRoute()">Start Route</button>
             </div>
         </div>
     </div>
