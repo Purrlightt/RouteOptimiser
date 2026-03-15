@@ -3,39 +3,34 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>CityPost Delivery Sync</title>
+    <title>CityPost Turbo Optimizer</title>
     
     <script src="config.js"></script>
     <script src="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.js"></script>
     <link href="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.css" rel="stylesheet" />
 
     <style>
-        :root { --neon: #00f2ff; --purple: #7000ff; }
+        :root { --neon: #00f2ff; --purple: #7000ff; --danger: #ff4444; }
         body, html { margin: 0; padding: 0; width: 100%; height: 100%; background: #000; color: #fff; font-family: sans-serif; overflow: hidden; }
-        #app-wrapper { display: flex; flex-direction: column; height: 100vh; }
+        #app-wrapper { display: flex; flex-direction: column; height: 100vh; width: 100vw; }
         #map { flex: 1; width: 100%; z-index: 1; }
-        
         #ui-panel {
-            height: 42%; background: #111; border-top: 2px solid var(--neon);
+            height: 45%; background: #0f0f0f; border-top: 2px solid var(--neon);
             display: flex; flex-direction: column; padding: 12px; z-index: 99999;
             box-sizing: border-box;
         }
-
-        .status-msg { font-size: 11px; color: var(--neon); margin-bottom: 5px; font-weight: bold; }
-        .input-row { display: flex; gap: 6px; margin-bottom: 8px; }
-        input { flex: 2; background: #222; color: #fff; border: 1px solid #444; padding: 12px; border-radius: 8px; font-size: 16px; outline: none; }
-        select { flex: 1; background: #222; color: var(--neon); border: 1px solid #444; border-radius: 8px; font-weight: bold; }
-
-        .queue-list { flex: 1; overflow-y: auto; background: #000; border-radius: 8px; border: 1px solid #222; margin-bottom: 8px; }
-        .queue-item { display: flex; justify-content: space-between; padding: 12px; border-bottom: 1px solid #222; color: #fff !important; font-size: 14px; }
-
-        .btn-row { display: flex; gap: 8px; }
+        .status-bar { font-size: 11px; color: var(--neon); margin-bottom: 8px; font-weight: 800; text-transform: uppercase; }
+        .input-row { display: flex; gap: 8px; margin-bottom: 10px; }
+        input { flex: 2; background: #1a1a1a; color: #fff; border: 1px solid #333; padding: 12px; border-radius: 10px; font-size: 16px; outline: none; }
+        select { flex: 1; background: #222; color: var(--neon); border: 1px solid #333; border-radius: 10px; }
+        .queue-list { flex: 1; overflow-y: auto; background: #000; border-radius: 10px; border: 1px solid #222; margin-bottom: 10px; }
+        .queue-item { display: flex; justify-content: space-between; padding: 12px; border-bottom: 1px solid #222; color: #ffffff !important; font-size: 14px; }
+        .action-row { display: flex; gap: 8px; }
         button { padding: 14px; border: none; border-radius: 10px; font-weight: 800; cursor: pointer; text-transform: uppercase; font-size: 11px; }
         .btn-add { background: var(--neon); color: #000; }
-        .btn-clear { background: #400; color: #f88; }
+        .btn-clear { background: #300; color: #f88; }
         .btn-route { flex: 2; background: linear-gradient(90deg, var(--neon), var(--purple)); color: #fff; }
-
-        .house-marker { width: 28px; height: 28px; background: #000; border: 2px solid var(--neon); border-radius: 50%; display: flex; align-items: center; justify-content: center; color: var(--neon); font-weight: 900; }
+        .house-marker { width: 30px; height: 30px; background: #000; border: 2px solid var(--neon); border-radius: 50%; display: flex; align-items: center; justify-content: center; color: var(--neon); font-weight: 900; }
     </style>
 </head>
 <body>
@@ -43,20 +38,20 @@
 <div id="app-wrapper">
     <div id="map"></div>
     <div id="ui-panel">
-        <div id="status" class="status-msg">GPS: SEARCHING...</div>
+        <div id="status" class="status-bar">GPS: Initializing...</div>
         <div class="input-row">
-            <input type="text" id="streetInput" placeholder="Straße + Nr (z.B. Lübecker 3)">
+            <input type="text" id="streetInput" placeholder="Strasse + Nr">
             <select id="plzSelect">
                 <option value="30823">30823</option>
                 <option value="30826">30826</option>
                 <option value="30827">30827</option>
             </select>
-            <button class="btn-add" onclick="addAndPin()">ADD</button>
+            <button class="btn-add" onclick="addStop()">ADD</button>
         </div>
         <div id="addressQueue" class="queue-list"></div>
-        <div class="btn-row">
-            <button class="btn-clear" onclick="clearEverything()">Clear</button>
-            <button class="btn-route" onclick="generateOptimizedRoute()">Start Route</button>
+        <div class="action-row">
+            <button class="btn-clear" onclick="clearAll()">Clear</button>
+            <button class="btn-route" onclick="optimizeAndRoute()">OPTIMIZE & START</button>
         </div>
     </div>
 </div>
@@ -80,127 +75,115 @@
 
     geolocate.on('geolocate', (e) => {
         userLoc = [e.coords.longitude, e.coords.latitude];
-        document.getElementById('status').innerText = "GPS: LOCKED | SYSTEM READY";
+        document.getElementById('status').innerText = "GPS: Locked | System Ready";
+        document.getElementById('status').style.color = "#00ff00";
     });
 
-    // INSTANT ADD & PIN Logic
-    async function addAndPin() {
+    async function addStop() {
         const street = document.getElementById('streetInput').value.trim();
         const plz = document.getElementById('plzSelect').value;
         if (!street) return;
 
-        document.getElementById('status').innerText = "Finding house...";
-        
-        // Search with strict area bias (308xx Garbsen)
+        document.getElementById('status').innerText = "Locating...";
         const query = encodeURIComponent(`${street}, ${plz} Garbsen, Germany`);
-        const url = `https://api.maptiler.com/geocoding/${query}.json?key=${T_KEY}&limit=1&bbox=9.55,52.38,9.68,52.46`;
+        const url = `https://api.maptiler.com/geocoding/${query}.json?key=${T_KEY}&limit=1&bbox=9.58,52.39,9.65,52.44`;
 
         try {
             const r = await fetch(url);
             const d = await r.json();
-            
             if (d.features && d.features.length > 0) {
                 const pt = d.features[0].center;
+                const id = Date.now();
+                queue.push({ street, plz, coords: pt, id });
+                updateUI();
+                document.getElementById('streetInput').value = "";
+                document.getElementById('status').innerText = "Added: " + street;
                 
-                // Add to internal queue
-                const newStop = { street, plz, coords: pt, id: Date.now() };
-                queue.push(newStop);
-                
-                // DROP PIN IMMEDIATELY
+                // Drop pin
                 const el = document.createElement('div');
                 el.className = 'house-marker';
                 el.innerHTML = queue.length;
                 const m = new maplibregl.Marker(el).setLngLat(pt).addTo(map);
-                
-                markers.push({ id: newStop.id, marker: m });
-
-                updateUI();
-                document.getElementById('streetInput').value = "";
-                document.getElementById('status').innerText = "Stop added ✅";
-                
-                // Fly to the new pin
-                map.easeTo({ center: pt, zoom: 17 });
+                markers.push({ id, marker: m });
             } else {
-                document.getElementById('status').innerText = "House not found! Check spelling.";
+                document.getElementById('status').innerText = "Not found!";
             }
-        } catch (e) {
-            document.getElementById('status').innerText = "Search Error!";
-        }
+        } catch (e) { document.getElementById('status').innerText = "Search Error"; }
     }
 
     function updateUI() {
         document.getElementById('addressQueue').innerHTML = queue.map((item, i) => `
             <div class="queue-item">
                 <span><b>${item.plz}</b> ${item.street}</span>
-                <span onclick="removeStop(${item.id})" style="color:red; cursor:pointer;">X</span>
+                <span onclick="removeStop(${item.id})" style="color:var(--danger); cursor:pointer;">X</span>
             </div>
         `).join('');
     }
 
     function removeStop(id) {
-        const idx = queue.findIndex(q => q.id === id);
-        if (idx > -1) {
-            queue.splice(idx, 1);
+        const qIdx = queue.findIndex(q => q.id === id);
+        if (qIdx > -1) {
+            queue.splice(qIdx, 1);
             const mIdx = markers.findIndex(m => m.id === id);
-            if (mIdx > -1) {
-                markers[mIdx].marker.remove();
-                markers.splice(mIdx, 1);
-            }
+            if (mIdx > -1) { markers[mIdx].marker.remove(); markers.splice(mIdx, 1); }
             updateUI();
         }
     }
 
-    function clearEverything() {
-        queue = [];
-        markers.forEach(m => m.marker.remove());
-        markers = [];
+    function clearAll() {
+        queue = []; markers.forEach(m => m.marker.remove()); markers = [];
         if (map.getSource('route')) map.getSource('route').setData({type:'FeatureCollection', features:[]});
         updateUI();
-        document.getElementById('status').innerText = "System Cleared";
+        document.getElementById('status').innerText = "Cleared";
     }
 
-    async function generateOptimizedRoute() {
-        if (!userLoc) return alert("Waiting for GPS lock! Ensure blue dot is visible.");
-        if (queue.length === 0) return alert("Add some stops first!");
+    async function optimizeAndRoute() {
+        if (!userLoc || queue.length === 0) return alert("Wait for GPS and add stops!");
+        document.getElementById('status').innerText = "Optimizing Route...";
 
-        document.getElementById('status').innerText = "Calculating path...";
-        const stopCoords = queue.map(q => q.coords);
+        const jobs = queue.map((item, index) => ({ id: index, location: item.coords }));
         
-        // Include user location at the start
-        const allCoords = [userLoc, ...stopCoords];
-
         try {
-            const url = `https://api.openrouteservice.org/v2/directions/cycling-regular/geojson`;
-            const resp = await fetch(url, {
+            // STEP 1: Optimization (TSP)
+            const optResp = await fetch(`https://api.openrouteservice.org/optimization`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'Authorization': O_KEY },
-                body: JSON.stringify({ coordinates: allCoords })
+                body: JSON.stringify({
+                    jobs: jobs,
+                    vehicles: [{ id: 0, profile: "cycling-regular", start: userLoc }]
+                })
             });
-            const data = await resp.json();
+            const optData = await optResp.json();
+            
+            // Extract the optimized coordinates in order
+            const steps = optData.routes[0].steps;
+            const optimizedCoords = steps.map(s => s.location);
 
-            if (map.getSource('route')) {
-                map.getSource('route').setData(data);
-            } else {
-                map.addSource('route', { type: 'geojson', data: data });
-                map.addLayer({
-                    id: 'route', type: 'line', source: 'route',
-                    paint: { 'line-color': '#00f2ff', 'line-width': 5, 'line-opacity': 0.8 }
-                });
+            // STEP 2: Draw the line
+            const routeResp = await fetch(`https://api.openrouteservice.org/v2/directions/cycling-regular/geojson`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': O_KEY },
+                body: JSON.stringify({ coordinates: optimizedCoords })
+            });
+            const routeData = await routeResp.json();
+
+            if (map.getSource('route')) map.getSource('route').setData(routeData);
+            else {
+                map.addSource('route', { type: 'geojson', data: routeData });
+                map.addLayer({ id: 'route', type: 'line', source: 'route', paint: { 'line-color': '#00f2ff', 'line-width': 6 } });
             }
 
             const bounds = new maplibregl.LngLatBounds();
-            allCoords.forEach(p => bounds.extend(p));
+            optimizedCoords.forEach(p => bounds.extend(p));
             map.fitBounds(bounds, { padding: 50 });
-            document.getElementById('status').innerText = "Route Active!";
-        } catch (e) {
-            document.getElementById('status').innerText = "Routing API Error";
+            document.getElementById('status').innerText = "Optimized Route Active!";
+        } catch (e) { 
+            alert("Routing Error: Check API Key/Network");
+            document.getElementById('status').innerText = "Error"; 
         }
     }
 
-    map.on('load', () => { 
-        geolocate.trigger();
-        map.resize(); 
-    });
+    map.on('load', () => { geolocate.trigger(); map.resize(); });
 </script>
 </body>
 </html>
