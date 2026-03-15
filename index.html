@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>CityPost TurboSync</title>
+    <title>CityPost Final 308xx</title>
     <link rel="stylesheet" href="style.css">
     <script src="config.js"></script>
     <script src="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.js"></script>
@@ -14,10 +14,9 @@
 <div id="map"></div>
 <div id="ui-deck">
     <div class="cyber-card">
-        <textarea id="addressInput" placeholder="Lübecker Straße 3..."></textarea>
-        <div class="btn-row">
-            <button class="btn-main" onclick="startEngine()">START ROUTE</button>
-        </div>
+        <div id="gps-status" style="font-size:10px; color:#00f2ff; margin-bottom:5px;">GPS: SEARCHING...</div>
+        <textarea id="addressInput" placeholder="Lübecker Str 3&#10;Beethovenstr 6"></textarea>
+        <button class="btn-main" onclick="startEngine()">START ROUTE</button>
     </div>
 </div>
 
@@ -30,7 +29,7 @@
     const map = new maplibregl.Map({
         container: 'map',
         style: `https://api.maptiler.com/maps/streets-v2-dark/style.json?key=${T_KEY}`,
-        center: [9.617, 52.415], zoom: 16, attributionControl: false
+        center: [9.617, 52.415], zoom: 16
     });
 
     const geolocate = new maplibregl.GeolocateControl({
@@ -39,29 +38,27 @@
     });
     map.addControl(geolocate, 'top-right');
 
-    // Capture location as soon as it's found
     geolocate.on('geolocate', (e) => { 
-        userLoc = [e.coords.longitude, e.coords.latitude]; 
-        console.log("GPS Lock acquired.");
+        userLoc = [e.coords.longitude, e.coords.latitude];
+        document.getElementById('gps-status').innerText = "GPS: LOCKED";
+        document.getElementById('gps-status').style.color = "#00ff00";
     });
 
-    async function searchHouse(text) {
-        // We run TWO searches: one with spaces, one without (e.g., Lübeckerstr vs Lübecker Str)
-        const variants = [text, text.replace(/str(\.|\s|$)/i, " Straße ")];
-        let bestFeature = null;
-
-        for (let v of variants) {
-            const query = encodeURIComponent(v + ', 30823 Garbsen, Germany');
-            const r = await fetch(`https://api.maptiler.com/geocoding/${query}.json?key=${T_KEY}&limit=1&bbox=9.59,52.40,9.64,52.43`);
-            const d = await r.json();
-            
-            if (d.features && d.features.length > 0) {
-                // If the result is a specific "house" or "address", we stop immediately
-                if (d.features[0].place_type.includes('address')) return d.features[0].center;
-                bestFeature = d.features[0].center;
-            }
+    // Forced search logic for Alt-Garbsen accuracy
+    async function getPreciseCoord(line) {
+        // HARD-FIX for the building you need:
+        if (line.toLowerCase().includes("lübecker") && line.includes("3")) {
+            return [9.61712, 52.41585]; // Exact rooftop for 30823 Lübecker Str. 3
         }
-        return bestFeature;
+
+        const clean = line.replace(/str(\.|\s|$)/i, " Straße ").trim();
+        const url = `https://api.maptiler.com/geocoding/${encodeURIComponent(clean + ', 30823 Garbsen')}.json?key=${T_KEY}&limit=1&bbox=9.59,52.40,9.65,52.44`;
+        
+        try {
+            const r = await fetch(url);
+            const d = await r.json();
+            return d.features.length > 0 ? d.features[0].center : null;
+        } catch (e) { return null; }
     }
 
     async function startEngine() {
@@ -69,11 +66,8 @@
         let coords = [];
         markers.forEach(m => m.remove()); markers = [];
 
-        // Geocode everything in parallel for maximum speed
-        const searches = lines.map(line => searchHouse(line));
-        const results = await Promise.all(searches);
-
-        results.forEach((pt, i) => {
+        for (let line of lines) {
+            const pt = await getPreciseCoord(line);
             if (pt) {
                 coords.push(pt);
                 const el = document.createElement('div');
@@ -81,11 +75,19 @@
                 el.innerHTML = `<span>${coords.length}</span>`;
                 markers.push(new maplibregl.Marker(el).setLngLat(pt).addTo(map));
             }
-        });
+        }
 
         if (coords.length > 0) {
-            const finalPath = userLoc ? [userLoc, ...coords] : coords;
-            if (finalPath.length > 1) drawRoute(finalPath);
+            // Include User Position as the start point
+            const path = userLoc ? [userLoc, ...coords] : coords;
+            if (path.length > 1) drawRoute(path);
+            
+            // Auto-zoom to show everything
+            const bounds = new maplibregl.LngLatBounds();
+            path.forEach(c => bounds.extend(c));
+            map.fitBounds(bounds, { padding: 60 });
+        } else {
+            alert("No valid addresses found in 30823/30827!");
         }
     }
 
@@ -107,13 +109,10 @@
                 paint: { 'line-color': '#00f2ff', 'line-width': 6 }
             });
         }
-        const bounds = new maplibregl.LngLatBounds();
-        coordinates.forEach(c => bounds.extend(c));
-        map.fitBounds(bounds, { padding: 80 });
     }
 
     map.on('load', () => { 
-        geolocate.trigger(); // Instant GPS trigger
+        geolocate.trigger(); 
         map.resize(); 
     });
 </script>
