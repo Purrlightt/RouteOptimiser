@@ -1,175 +1,86 @@
 <!DOCTYPE html>
 <html>
-
 <head>
-    <title>Garbsen CityPost Router</title>
+    <title>Garbsen Postie Precision</title>
     <meta name="viewport" content="initial-scale=1,maximum-scale=1,user-scalable=no">
     <script src="https://unpkg.com/maplibre-gl@3.0.0/dist/maplibre-gl.js"></script>
     <link href="https://unpkg.com/maplibre-gl@3.0.0/dist/maplibre-gl.css" rel="stylesheet" />
     <style>
-        body {
-            margin: 0;
-            padding: 0;
-            font-family: sans-serif;
-            background: #f4f4f4;
-        }
-
-        #map {
-            position: absolute;
-            top: 0;
-            bottom: 0;
-            width: 100%;
-        }
-
-        #ui {
-            position: absolute;
-            top: 10px;
-            left: 10px;
-            right: 10px;
-            background: white;
-            padding: 12px;
-            border-radius: 12px;
-            z-index: 10;
-            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
-        }
-
-        #status {
-            font-size: 12px;
-            color: #666;
-            margin-bottom: 8px;
-            font-weight: bold;
-        }
-
-        textarea {
-            width: 100%;
-            height: 70px;
-            border: 1px solid #ccc;
-            border-radius: 6px;
-            padding: 8px;
-            box-sizing: border-box;
-            font-size: 14px;
-        }
-
-        button {
-            background: #007bff;
-            color: white;
-            border: none;
-            padding: 12px;
-            border-radius: 6px;
-            width: 100%;
-            font-weight: bold;
-            margin-top: 8px;
-        }
-
-        button:active {
-            background: #0056b3;
-        }
+        body { margin: 0; padding: 0; font-family: sans-serif; }
+        #map { position: absolute; top: 0; bottom: 0; width: 100%; }
+        #ui { position: absolute; top: 10px; left: 10px; right: 10px; background: white; padding: 10px; border-radius: 8px; z-index: 10; box-shadow: 0 2px 10px rgba(0,0,0,0.3); }
+        textarea { width: 100%; height: 60px; box-sizing: border-box; margin-bottom: 5px; border: 1px solid #ccc; }
+        button { background: #e62e00; color: white; border: none; padding: 12px; border-radius: 5px; width: 100%; font-weight: bold; }
+        .status { font-size: 11px; margin-bottom: 5px; color: #555; }
     </style>
 </head>
-
 <body>
 
-    <div id="ui">
-        <div id="status">Ready. Enter addresses and press button.</div>
-        <textarea id="addressInput" placeholder="Lübeckerstr 3&#10;Beethovenstr 6&#10;Rote Reihe 19"></textarea>
-        <button onclick="startRouting()">Show Bike Route</button>
-    </div>
-    <div id="map"></div>
+<div id="ui">
+    <div id="status" class="status">Enter address (e.g. Rote Reihe 19)</div>
+    <textarea id="addressInput"></textarea>
+    <button onclick="startRouting()">GET HOUSE LOCATIONS</button>
+</div>
+<div id="map"></div>
 
-    <script>
-        // --- INSERT YOUR KEYS HERE ---
-        const MAPTILER_KEY = 'CcM6ytJu15GKv69XcBwC';
-        const ORS_KEY = 'eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6IjMzNWI2ZDBlMTk3YzRhZTZiNzkwZTQwYmEwNDhlOTM5IiwiaCI6Im11cm11cjY0In0=';
+<script>
+    const MAPTILER_KEY = 'CcM6ytJu15GKv69XcBwC';
+    const ORS_KEY = 'eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6IjMzNWI2ZDBlMTk3YzRhZTZiNzkwZTQwYmEwNDhlOTM5IiwiaCI6Im11cm11cjY0In0=';
 
-        const statusMsg = document.getElementById('status');
+    const map = new maplibregl.Map({
+        container: 'map',
+        // 'streets-v2' is best for seeing house numbers clearly
+        style: `https://api.maptiler.com/maps/streets-v2/style.json?key=${MAPTILER_KEY}`,
+        center: [9.6105, 52.4187], 
+        zoom: 16 // Start zoomed in closer
+    });
 
-        const map = new maplibregl.Map({
-            container: 'map',
-            style: `https://api.maptiler.com/maps/streets-v2/style.json?key=${MAPTILER_KEY}`,
-            center: [9.6105, 52.4187], // Berenbostel
-            zoom: 14
-        });
+    map.addControl(new maplibregl.GeolocateControl({
+        positionOptions: { enableHighAccuracy: true },
+        trackUserLocation: true
+    }));
 
-        map.addControl(new maplibregl.GeolocateControl({
-            positionOptions: { enableHighAccuracy: true },
-            trackUserLocation: true
-        }));
+    async function startRouting() {
+        const lines = document.getElementById('addressInput').value.split('\n').filter(l => l.trim().length > 0);
+        const coordinates = [];
+        const status = document.getElementById('status');
 
-        async function startRouting() {
-            const lines = document.getElementById('addressInput').value.split('\n').map(l => l.trim()).filter(l => l.length > 0);
-            if (lines.length < 1) { statusMsg.innerText = "Error: Please enter at least 1 address."; return; }
-
-            statusMsg.innerText = "Step 1: Finding locations...";
-            const coordinates = [];
-
+        for (let addr of lines) {
+            status.innerText = "Locating: " + addr;
+            
+            // KEY CHANGE: layers=address,venue forces it to find the house, not just the street
+            const url = `https://api.openrouteservice.org/geocode/search?api_key=${ORS_KEY}&text=${encodeURIComponent(addr + ", Garbsen")}&layers=address,venue&size=1`;
+            
             try {
-                for (let addr of lines) {
-                    // We add "Garbsen" so it doesn't find a "Lübecker Str" in Berlin
-                    const query = encodeURIComponent(addr + ", Garbsen, Germany");
-                    const url = `https://api.openrouteservice.org/geocode/search?api_key=${ORS_KEY}&text=${query}&size=1`;
+                const resp = await fetch(url);
+                const data = await resp.json();
+                
+                if (data.features && data.features.length > 0) {
+                    const feat = data.features[0];
+                    const coord = feat.geometry.coordinates;
+                    coordinates.push(coord);
 
-                    const resp = await fetch(url);
-                    if (!resp.ok) throw new Error("Geocoding failed. Check your ORS Key.");
-
-                    const data = await resp.json();
-
-                    if (data.features && data.features.length > 0) {
-                        const coord = data.features[0].geometry.coordinates; // [lon, lat]
-                        coordinates.push(coord);
-                        new maplibregl.Marker({ color: 'red' }).setLngLat(coord).setPopup(new maplibregl.Popup().setHTML(addr)).addTo(map);
-                    } else {
-                        statusMsg.innerText = "Could not find: " + addr;
-                    }
+                    // Add a label that shows the house number on the pin
+                    new maplibregl.Marker({color: 'red'})
+                        .setLngLat(coord)
+                        .setPopup(new maplibregl.Popup().setHTML(`<b>${feat.properties.label}</b>`))
+                        .addTo(map);
                 }
-
-                if (coordinates.length > 1) {
-                    statusMsg.innerText = "Step 2: Calculating bike path...";
-                    await drawRoute(coordinates);
-                    statusMsg.innerText = "Success! Route displayed.";
-                } else if (coordinates.length === 1) {
-                    map.flyTo({ center: coordinates[0], zoom: 17 });
-                    statusMsg.innerText = "Showing single location.";
-                }
-
-            } catch (err) {
-                statusMsg.innerText = "Error: " + err.message;
-                console.error(err);
-            }
+            } catch (e) { console.error(e); }
         }
 
-        async function drawRoute(coords) {
-            const body = { "coordinates": coords };
-            const url = `https://api.openrouteservice.org/v2/directions/cycling-regular/geojson`;
-
-            const resp = await fetch(url, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': ORS_KEY
-                },
-                body: JSON.stringify(body)
-            });
-
-            if (!resp.ok) throw new Error("Routing API failed.");
-            const data = await resp.json();
-
-            if (map.getSource('route')) {
-                map.getSource('route').setData(data);
-            } else {
-                map.addSource('route', { type: 'geojson', data: data });
-                map.addLayer({
-                    id: 'route',
-                    type: 'line',
-                    source: 'route',
-                    paint: { 'line-color': '#007bff', 'line-width': 5, 'line-opacity': 0.75 }
-                });
-            }
-
+        if (coordinates.length > 0) {
+            status.innerText = "Found " + coordinates.length + " houses.";
             const bounds = new maplibregl.LngLatBounds();
-            coords.forEach(c => bounds.extend(c));
-            map.fitBounds(bounds, { padding: 80 });
+            coordinates.forEach(c => bounds.extend(c));
+            map.fitBounds(bounds, { padding: 50 });
         }
-    </script>
-</body>
+    }
 
+    // Force the map to show building numbers when zooming in
+    map.on('load', () => {
+        map.setLayoutProperty('building_label', 'visibility', 'visible');
+    });
+</script>
+</body>
 </html>
