@@ -1,29 +1,62 @@
 :root { --neon: #00f2ff; --purple: #7000ff; --bg: #0a0a0a; }
-body, html { margin: 0; padding: 0; height: 100%; background: var(--bg); color: white; font-family: sans-serif; overflow: hidden; }
 
-#map { position: absolute; top: 0; width: 100%; height: 50%; z-index: 1; border-bottom: 2px solid var(--neon); }
-
-/* UI Panel takes bottom 50% */
-#ui-panel {
-    position: absolute; bottom: 0; width: 100%; height: 50%;
-    background: #111; z-index: 10; display: flex; flex-direction: column; padding: 15px; box-sizing: border-box;
+/* Force the body to be exactly the size of the phone screen */
+html, body { 
+    margin: 0; padding: 0; width: 100%; height: 100%; 
+    overflow: hidden; background: #000; font-family: sans-serif;
 }
 
-.input-group { display: flex; gap: 5px; margin-bottom: 10px; }
-input { flex: 2; background: #000; color: #fff; border: 1px solid #444; padding: 12px; border-radius: 8px; }
-select { flex: 1; background: #222; color: var(--neon); border: 1px solid #444; border-radius: 8px; font-weight: bold; }
+/* The parent container that holds everything */
+#app-wrapper {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    height: 100%;
+}
+
+/* Map takes the top half */
+#map { 
+    flex: 1; /* Takes all available space at the top */
+    width: 100%;
+    z-index: 1;
+}
+
+/* UI Panel takes the bottom half */
+#ui-panel {
+    height: 45%; /* Fixed height so it can't be pushed away */
+    background: #111;
+    border-top: 2px solid var(--neon);
+    display: flex;
+    flex-direction: column;
+    padding: 15px;
+    box-sizing: border-box;
+    z-index: 10;
+}
+
+.input-group { display: flex; gap: 8px; margin-bottom: 10px; }
+input { 
+    flex: 2; background: #000; color: #fff; border: 1px solid #444; 
+    padding: 12px; border-radius: 10px; font-size: 16px;
+}
+select { 
+    flex: 1; background: #222; color: var(--neon); border: 1px solid #444; 
+    border-radius: 10px; font-weight: bold;
+}
 
 .queue-list {
-    flex-grow: 1; overflow-y: auto; background: #000; border-radius: 8px;
-    padding: 10px; margin-bottom: 10px; border: 1px solid #222;
+    flex-grow: 1; overflow-y: auto; background: #000; 
+    border-radius: 10px; padding: 10px; margin-bottom: 10px; 
+    border: 1px solid #222;
 }
+
 .queue-item {
     display: flex; justify-content: space-between; align-items: center;
-    padding: 8px; border-bottom: 1px solid #333; font-size: 14px;
+    padding: 10px; border-bottom: 1px solid #222; font-size: 14px;
+    color: #ccc;
 }
-.remove-btn { color: #ff4444; font-weight: bold; cursor: pointer; padding: 5px; }
 
 .btn-main {
-    width: 100%; padding: 15px; border-radius: 10px; background: linear-gradient(90deg, var(--neon), var(--purple));
+    width: 100%; padding: 16px; border-radius: 12px; 
+    background: linear-gradient(90deg, var(--neon), var(--purple));
     color: #fff; border: none; font-weight: 900; text-transform: uppercase;
 }
