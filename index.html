@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Garbsen Route Pro</title>
+    <title>Garbsen CyberRoute</title>
     <link rel="stylesheet" href="style.css">
     <script src="config.js"></script>
     <script src="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.js"></script>
@@ -11,18 +11,17 @@
 </head>
 <body>
 
+<div id="map"></div>
+
 <div id="ui-wrapper">
-    <div class="glass-card">
-        <textarea id="addressInput" placeholder="Lübecker Str. 3..."></textarea>
-        <div class="button-row">
-            <button class="btn-primary" onclick="startDelivery()">Go</button>
-            <button class="btn-dark" onclick="toggleSatellite()">Satellite</button>
-            <button class="btn-dark" style="background:#400" onclick="resetApp()">Reset</button>
+    <div class="cyber-card">
+        <textarea id="addressInput" placeholder="ENTER STOPS..."></textarea>
+        <div class="btn-row">
+            <button class="btn-primary" onclick="startDelivery()">Initialize Route</button>
+            <button class="btn-secondary" onclick="toggleSatellite()">SAT</button>
         </div>
     </div>
 </div>
-
-<div id="map"></div>
 
 <script>
     const TILER_KEY = CONFIG.MAPTILER_KEY;
@@ -31,8 +30,9 @@
     const map = new maplibregl.Map({
         container: 'map',
         style: `https://api.maptiler.com/maps/streets-v2-dark/style.json?key=${TILER_KEY}`,
-        center: [9.605, 52.418], // Better center between Alt-Garbsen and Mitte
-        zoom: 14
+        center: [9.605, 52.418],
+        zoom: 14,
+        pitch: 50 // Futuristic 3D tilt
     });
 
     const geolocate = new maplibregl.GeolocateControl({
@@ -43,20 +43,15 @@
 
     let markers = [];
 
-    // AUTO-SAVE: Load previous addresses on startup
+    // Load saved route
     window.onload = () => {
         const saved = localStorage.getItem('last_route');
         if (saved) document.getElementById('addressInput').value = saved;
     };
 
-    function resetApp() {
-        localStorage.removeItem('last_route');
-        location.reload();
-    }
-
     async function startDelivery() {
         const input = document.getElementById('addressInput').value;
-        localStorage.setItem('last_route', input); // SAVE ROUTE
+        localStorage.setItem('last_route', input);
         
         const lines = input.split('\n').filter(l => l.trim().length > 0);
         const coords = [];
@@ -64,9 +59,11 @@
         markers = [];
 
         for (let line of lines) {
-            // FIX: Prioritizing 30823 Garbsen to find Lübecker Str in Alt-Garbsen
-            const query = encodeURIComponent(line + ', 30823 Garbsen, Germany');
-            const url = `https://api.maptiler.com/geocoding/${query}.json?key=${TILER_KEY}&fuzzy=false`;
+            // Priority Search: We add "Alt-Garbsen" to help find Lübecker Str correctly
+            let searchQuery = line + ', Garbsen, Germany';
+            if (line.toLowerCase().includes('lübecker')) searchQuery = line + ', 30823 Alt-Garbsen, Germany';
+
+            const url = `https://api.maptiler.com/geocoding/${encodeURIComponent(searchQuery)}.json?key=${TILER_KEY}&fuzzy=false`;
             
             try {
                 const resp = await fetch(url);
@@ -81,10 +78,10 @@
                     el.innerHTML = `<span>${line.match(/\d+/) || '!'}</span>`;
                     
                     const m = new maplibregl.Marker(el).setLngLat(pt).addTo(map);
-                    el.onclick = () => { if(confirm("Delivered?")) m.remove(); };
+                    el.onclick = () => { if(confirm("DELIVERY COMPLETE?")) m.remove(); };
                     markers.push(m);
                 }
-            } catch (e) { console.error(e); }
+            } catch (e) { console.error("Geocode Error", e); }
         }
 
         if (coords.length > 1) drawPath(coords);
@@ -108,13 +105,17 @@
                 id: 'route',
                 type: 'line',
                 source: 'route',
-                paint: { 'line-color': '#00d2ff', 'line-width': 5, 'line-opacity': 0.8 }
+                paint: { 
+                    'line-color': '#00f2ff', 
+                    'line-width': 5,
+                    'line-blur': 2 // Glow effect
+                }
             });
         }
         
         const bounds = new maplibregl.LngLatBounds();
         coords.forEach(c => bounds.extend(c));
-        map.fitBounds(bounds, { padding: 120 });
+        map.fitBounds(bounds, { padding: 80 });
     }
 
     function toggleSatellite() {
