@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Garbsen CityPost Router</title>
+    <meta name="viewport" content="initial-scale=1,maximum-scale=1,user-scalable=no">
+    <script src="https://unpkg.com/maplibre-gl@3.0.0/dist/maplibre-gl.js"></script>
+    <link href="https://unpkg.com/maplibre-gl@3.0.0/dist/maplibre-gl.css" rel="stylesheet" />
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: Arial, sans-serif;
+        }
+
+        #map {
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            width: 100%;
+        }
+
+        #ui {
+            position: absolute;
+            bottom: 20px;
+            left: 10px;
+            right: 10px;
+            background: white;
+            padding: 15px;
+            border-radius: 12px;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
+            z-index: 1;
+        }
+
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px;
+            border-radius: 5px;
+            width: 100%;
+            font-weight: bold;
+        }
+
+        textarea {
+            width: 100%;
+            height: 60px;
+            margin-bottom: 10px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div id="ui">
+        <textarea id="addresses" placeholder="Paste addresses here (one per line)..."></textarea>
+        <button onclick="optimizeRoute()">Optimize My Bike Route</button>
+    </div>
+    <div id="map"></div>
+
+    <script>
+        // --- SETUP: REPLACE THESE WITH YOUR FREE KEYS ---
+        const MAPTILER_KEY = 'CcM6ytJu15GKv69XcBwC';
+        const ORS_KEY = 'eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6IjMzNWI2ZDBlMTk3YzRhZTZiNzkwZTQwYmEwNDhlOTM5IiwiaCI6Im11cm11cjY0In0=';
+
+        const map = new maplibregl.Map({
+            container: 'map',
+            style: `https://api.maptiler.com/maps/streets-v2/style.json?key=${MAPTILER_KEY}`,
+            center: [9.6105, 52.4187], // Centered on Berenbostel
+            zoom: 14
+        });
+
+        // Add Live GPS Tracker
+        const geolocate = new maplibregl.GeolocateControl({
+            positionOptions: { enableHighAccuracy: true },
+            trackUserLocation: true,
+            showUserHeading: true
+        });
+        map.addControl(geolocate);
+
+        async function optimizeRoute() {
+            const input = document.getElementById('addresses').value;
+            const addressList = input.split('\n').filter(a => a.trim() !== "");
+
+            alert("Optimizing " + addressList.length + " stops in Berenbostel...");
+
+            // This is where you would call the OpenRouteService Optimization API.
+            // For now, it will zoom to your location to start the route.
+            geolocate.trigger();
+        }
+
+        map.on('load', () => {
+            console.log("Map loaded with building details for 30827.");
+        });
+    </script>
+</body>
+
+</html>
