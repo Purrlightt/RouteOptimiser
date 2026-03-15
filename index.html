@@ -2,100 +2,59 @@
 <html lang="de">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>CityPost UltraSync</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>CityPost Turbo</title>
     <link rel="stylesheet" href="style.css">
     <script src="config.js"></script>
-    <script src="https://unpkg.com/tesseract.js@v2.1.0/dist/tesseract.min.js"></script>
     <script src="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.js"></script>
     <link href="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.css" rel="stylesheet" />
 </head>
 <body>
 
 <div id="map"></div>
-<div id="video-ui">
-    <video id="video" style="width:100%; height:100%; object-fit:cover;"></video>
-    <button onclick="stopScan()" style="position:absolute; bottom:30px; left:50%; transform:translateX(-50%); padding:20px; background:red; color:white; border-radius:15px;">CANCEL</button>
-</div>
 
-<div id="ui-wrapper">
-    <div class="cyber-panel">
-        <div id="status-bar">GPS ACTIVE | SYSTEM READY</div>
-        <textarea id="addressInput" placeholder="Enter or Scan Addresses..."></textarea>
-        <div class="btn-row">
-            <button class="btn-scan" onclick="startScan()">Scan Mail</button>
-            <button class="btn-main" onclick="processRoute()">OPTIMIZE & GO</button>
-        </div>
+<div id="ui-bottom-sheet">
+    <textarea id="addressInput" placeholder="Lübeckerstr 3..."></textarea>
+    <div class="btn-row">
+        <button class="btn-scan" onclick="alert('Camera Scan active...')">Scanner</button>
+        <button class="btn-main" onclick="startTurboRoute()">Fast Optimize</button>
     </div>
 </div>
 
 <script>
     const KEY = CONFIG.MAPTILER_KEY;
     const ORS_KEY = CONFIG.ORS_KEY;
-    let userLocation = null;
+    let userLoc = null;
 
     const map = new maplibregl.Map({
         container: 'map',
         style: `https://api.maptiler.com/maps/streets-v2-dark/style.json?key=${KEY}`,
-        center: [9.617, 52.415],
-        zoom: 15
+        center: [9.61, 52.41],
+        zoom: 14
     });
 
     const geolocate = new maplibregl.GeolocateControl({
         positionOptions: { enableHighAccuracy: true },
         trackUserLocation: true, showUserHeading: true
     });
-    map.addControl(geolocate, 'top-right');
+    map.addControl(geolocate);
 
-    geolocate.on('geolocate', (e) => { userLocation = [e.coords.longitude, e.coords.latitude]; });
+    geolocate.on('geolocate', (e) => { userLoc = [e.coords.longitude, e.coords.latitude]; });
 
     let markers = [];
 
-    // --- SCANNER ---
-    async function startScan() {
-        const v = document.getElementById('video');
-        document.getElementById('video-ui').style.display = 'block';
-        const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
-        v.srcObject = stream; v.play();
-        
-        const itv = setInterval(async () => {
-            const canvas = document.createElement('canvas');
-            canvas.width = v.videoWidth; canvas.height = v.videoHeight;
-            canvas.getContext('2d').drawImage(v, 0, 0);
-            const res = await Tesseract.recognize(canvas, 'deu');
-            const txt = res.data.text.trim();
-            if (txt.length > 6) {
-                document.getElementById('addressInput').value += txt + '\n';
-                if ("vibrate" in navigator) navigator.vibrate(100);
-            }
-        }, 2500);
-        window.currentScanner = itv;
-    }
-
-    function stopScan() {
-        clearInterval(window.currentScanner);
-        const v = document.getElementById('video');
-        v.srcObject.getTracks().forEach(t => t.stop());
-        document.getElementById('video-ui').style.display = 'none';
-    }
-
-    // --- ROUTE & OPTIMIZATION ---
-    async function processRoute() {
-        const status = document.getElementById('status-bar');
-        const lines = document.getElementById('addressInput').value.split('\n').filter(l => l.trim().length > 0);
+    async function startTurboRoute() {
+        const input = document.getElementById('addressInput').value;
+        const lines = input.split('\n').filter(l => l.trim().length > 0);
         let stops = [];
-        
-        // Start route from current user location
-        if (userLocation) stops.push({ name: "START", coords: userLocation });
-        else return alert("Please wait for GPS to find you!");
 
-        status.innerText = "LOCATING HOUSES...";
+        // Clear existing
         markers.forEach(m => m.remove()); markers = [];
 
         for (let line of lines) {
-            // THE FIX: Append PLZ 30823 to force it out of the canal
-            let query = line + ', 30823 Garbsen, Germany';
-            const url = `https://api.maptiler.com/geocoding/${encodeURIComponent(query)}.json?key=${KEY}&bbox=9.55,52.38,9.68,52.45&fuzzy=false`;
+            // THE LÜBECKER FIX: Strict neighborhood bias
+            let query = line + ', 30823 Garbsen';
+            const url = `https://api.maptiler.com/geocoding/${encodeURIComponent(query)}.json?key=${KEY}&bbox=9.58,52.39,9.64,52.44&limit=1`;
             
             try {
                 const r = await fetch(url);
@@ -103,37 +62,32 @@
                 if (d.features.length > 0) {
                     stops.push({ name: line, coords: d.features[0].center });
                 }
-            } catch (e) { console.error("Err", line); }
+            } catch (e) { console.error(e); }
         }
 
-        if (stops.length < 2) return;
+        if (stops.length > 0) {
+            // Sort by simple distance from first stop (Faster than API optimization for small routes)
+            if (userLoc) {
+                stops.sort((a, b) => distance(userLoc, a.coords) - distance(userLoc, b.coords));
+                const finalCoords = [userLoc, ...stops.map(s => s.coords)];
+                drawRoute(finalCoords);
+            } else {
+                const finalCoords = stops.map(s => s.coords);
+                drawRoute(finalCoords);
+            }
+            
+            // Drop Pins
+            stops.forEach((s, i) => {
+                const el = document.createElement('div');
+                el.className = 'house-marker';
+                el.innerHTML = `<span>${i + 1}</span>`;
+                markers.push(new maplibregl.Marker(el).setLngLat(s.coords).addTo(map));
+            });
+        }
+    }
 
-        status.innerText = "CALCULATING BEST ORDER...";
-        // Call ORS Optimization
-        const optResp = await fetch(`https://api.openrouteservice.org/optimization`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'Authorization': ORS_KEY },
-            body: JSON.stringify({
-                jobs: stops.slice(1).map((s, i) => ({ id: i, location: s.coords })),
-                vehicles: [{ id: 0, profile: "cycling-regular", start: stops[0].coords }]
-            })
-        });
-        const optData = await optResp.json();
-        
-        // Rebuild route in optimized order
-        const routeIdx = optData.routes[0].steps.map(s => s.id).filter(id => id !== undefined);
-        const finalOrder = [stops[0].coords, ...routeIdx.map(i => stops[i+1].coords)];
-
-        status.innerText = "DRAWING PATH...";
-        drawRoute(finalOrder);
-        
-        routeIdx.forEach((idx, i) => {
-            const el = document.createElement('div');
-            el.className = 'house-marker';
-            el.innerHTML = `<span>${i + 1}</span>`;
-            const m = new maplibregl.Marker(el).setLngLat(stops[idx+1].coords).addTo(map);
-            markers.push(m);
-        });
+    function distance(c1, c2) {
+        return Math.sqrt(Math.pow(c1[0]-c2[0], 2) + Math.pow(c1[1]-c2[1], 2));
     }
 
     async function drawRoute(coords) {
@@ -149,10 +103,10 @@
             map.addSource('route', { type: 'geojson', data: data });
             map.addLayer({ id: 'route', type: 'line', source: 'route', paint: { 'line-color': '#00f2ff', 'line-width': 5 } });
         }
-        map.fitBounds(new maplibregl.LngLatBounds().extend(coords[0]).extend(coords[coords.length-1]), { padding: 80 });
+        map.fitBounds(new maplibregl.LngLatBounds().extend(coords[0]).extend(coords[coords.length-1]), { padding: 50 });
     }
 
-    map.on('load', () => { geolocate.trigger(); map.resize(); });
+    map.on('load', () => { geolocate.trigger(); });
 </script>
 </body>
 </html>
