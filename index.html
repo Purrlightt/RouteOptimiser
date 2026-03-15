@@ -58,7 +58,7 @@
 <script>
     // --- PASTE YOUR KEYS HERE DIRECTLY ---
     const T_KEY = "CcM6ytJu15GKv69XcBwC"; 
-    const O_KEY = "eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6IjMzNWI2ZDBlMTk3YzRhZTZiNzkwZTQwYmEwNDhlOTM5IiwiaCI6Im11cm11cjY0In0";
+    const O_KEY = "eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6IjMzNWI2ZDBlMTk3YzRhZTZiNzkwZTQwYmEwNDhlOTM5IiwiaCI6Im11cm11cjY0In0=";
     // -------------------------------------
 
     let userLoc = null, queue = [], markers = [];
@@ -146,61 +146,37 @@
         document.getElementById('status').innerText = "Cleared";
     }
 
-    async function optimizeAndRoute() {
-        if (O_KEY.includes("YOUR_")) return alert("Please paste your ORS Key into the code!");
+   async function optimizeAndRoute() {
         if (!userLoc) return alert("Wait for GPS lock!");
         if (queue.length === 0) return alert("Add stops first!");
 
-        document.getElementById('status').innerText = "Optimizing Route...";
+        document.getElementById('status').innerText = "Testing Connection...";
+        
+        // We are going to test JUST the directions first to see if Optimization is the problem
+        const coords = [userLoc, ...queue.map(q => q.coords)];
 
         try {
-            // ORS usually prefers JUST the key, no "Bearer " text.
+            // Standard ORS Header
             const authHeader = O_KEY.trim(); 
 
-            // 1. OPTIMIZATION REQUEST
-            const optPayload = {
-                jobs: queue.map((item, index) => ({ id: index, location: item.coords })),
-                // Added "end: userLoc" so the API knows it's a round trip back to where you started
-                vehicles: [{ id: 0, profile: "cycling-regular", start: userLoc, end: userLoc }]
-            };
-
-            const optResp = await fetch(`https://api.openrouteservice.org/optimization`, {
-                method: 'POST',
-                headers: { 
-                    'Content-Type': 'application/json',
-                    'Authorization': authHeader 
-                },
-                body: JSON.stringify(optPayload)
-            });
-
-            if (!optResp.ok) {
-                const errText = await optResp.text();
-                throw new Error(`OPTIMIZATION ERROR (${optResp.status}):\n${errText}`);
-            }
-
-            const optData = await optResp.json();
-            
-            // Extract the sorted coordinates
-            const optimizedCoords = optData.routes[0].steps.map(s => s.location);
-
-            // 2. DIRECTIONS REQUEST (Drawing the blue line)
+            // ONLY Directions Request (Bypassing Optimization)
             const routeResp = await fetch(`https://api.openrouteservice.org/v2/directions/cycling-regular/geojson`, {
                 method: 'POST',
                 headers: { 
                     'Content-Type': 'application/json',
                     'Authorization': authHeader 
                 },
-                body: JSON.stringify({ coordinates: optimizedCoords })
+                body: JSON.stringify({ coordinates: coords })
             });
             
             if (!routeResp.ok) {
                 const errText = await routeResp.text();
-                throw new Error(`DIRECTIONS ERROR (${routeResp.status}):\n${errText}`);
+                throw new Error(`SERVER REJECTED (${routeResp.status}):\n${errText}`);
             }
             
             const routeData = await routeResp.json();
 
-            // 3. DRAW TO MAP
+            // DRAW TO MAP
             if (map.getSource('route')) map.getSource('route').setData(routeData);
             else {
                 map.addSource('route', { type: 'geojson', data: routeData });
@@ -208,14 +184,13 @@
             }
 
             const bounds = new maplibregl.LngLatBounds();
-            optimizedCoords.forEach(p => bounds.extend(p));
+            coords.forEach(p => bounds.extend(p));
             map.fitBounds(bounds, { padding: 50 });
-            document.getElementById('status').innerText = "Optimized Route Active!";
+            document.getElementById('status').innerText = "Basic Route Active!";
 
         } catch (e) { 
             console.error(e);
-            // THIS WILL NOW TELL YOU EXACTLY WHAT IS WRONG
-            alert(e.message); 
+            alert("DIAGNOSTIC ERROR:\n" + e.message); 
             document.getElementById('status').innerText = "Routing Failed"; 
         }
     }
