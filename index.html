@@ -2,8 +2,8 @@
 <html lang="de">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>CityPost PLZ-Master</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>CityPost 308xx Master</title>
     <link rel="stylesheet" href="style.css">
     <script src="config.js"></script>
     <script src="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.js"></script>
@@ -11,23 +11,24 @@
 </head>
 <body>
 
-<div id="map"></div>
+<div id="app-wrapper">
+    <div id="map"></div>
 
-<div id="ui-panel">
-    <div class="input-group">
-        <input type="text" id="streetInput" placeholder="Street + No (e.g. Lübecker 3)">
-        <select id="plzSelect">
-            <option value="30823">30823 (Alt-G)</option>
-            <option value="30826">30826 (Oster)</option>
-            <option value="30827">30827 (Beren)</option>
-        </select>
-        <button onclick="addToQueue()" style="background:var(--neon); color:#000; padding:0 15px; border-radius:8px; font-weight:bold;">+</button>
-    </div>
-
-    <div id="addressQueue" class="queue-list">
+    <div id="ui-panel">
+        <div class="input-group">
+            <input type="text" id="streetInput" placeholder="Lübecker Str 3">
+            <select id="plzSelect">
+                <option value="30823">30823 (Alt-G)</option>
+                <option value="30826">30826 (Oster)</option>
+                <option value="30827">30827 (Beren)</option>
+            </select>
+            <button onclick="addToQueue()" style="background:var(--neon); border:none; border-radius:8px; padding:0 15px; font-weight:bold;">ADD</button>
         </div>
 
-    <button class="btn-main" onclick="generateRoute()">CALCULATE OPTIMAL ROUTE</button>
+        <div id="addressQueue" class="queue-list"></div>
+
+        <button class="btn-main" onclick="generateRoute()">CALCULATE OPTIMAL ROUTE</button>
+    </div>
 </div>
 
 <script>
@@ -54,85 +55,71 @@
         const street = document.getElementById('streetInput').value.trim();
         const plz = document.getElementById('plzSelect').value;
         if (!street) return;
-
         queue.push({ street, plz });
-        updateQueueUI();
-        document.getElementById('streetInput').value = ""; // Clear input
+        updateUI();
+        document.getElementById('streetInput').value = "";
     }
 
-    function updateQueueUI() {
+    function updateUI() {
         const list = document.getElementById('addressQueue');
-        list.innerHTML = queue.map((item, index) => `
+        list.innerHTML = queue.map((item, i) => `
             <div class="queue-item">
-                <span><b>${item.plz}</b> - ${item.street}</span>
-                <span class="remove-btn" onclick="removeItem(${index})">X</span>
+                <span><b>${item.plz}</b> ${item.street}</span>
+                <span style="color:red; cursor:pointer;" onclick="removeItem(${i})">Remove</span>
             </div>
         `).join('');
     }
 
-    function removeItem(index) {
-        queue.splice(index, 1);
-        updateQueueUI();
+    function removeItem(i) {
+        queue.splice(i, 1);
+        updateUI();
     }
 
     async function generateRoute() {
-        if (queue.length === 0) return alert("Add some streets first!");
-        
+        if (queue.length === 0) return;
         let coords = [];
         markers.forEach(m => m.remove()); markers = [];
 
         for (let item of queue) {
-            // THE FIX: We force the geocoder to only look in the chosen PLZ
             const query = encodeURIComponent(`${item.street}, ${item.plz} Garbsen, Germany`);
             const url = `https://api.maptiler.com/geocoding/${query}.json?key=${T_KEY}&limit=1`;
-            
             try {
                 const r = await fetch(url);
                 const d = await r.json();
                 if (d.features && d.features.length > 0) {
                     const pt = d.features[0].center;
                     coords.push(pt);
-                    
                     const el = document.createElement('div');
-                    el.className = 'house-marker';
-                    el.innerHTML = `<span>${coords.length}</span>`;
-                    const m = new maplibregl.Marker(el).setLngLat(pt).addTo(map);
-                    markers.push(m);
+                    el.style.width = '24px'; el.style.height = '24px'; el.style.background = '#00f2ff'; el.style.borderRadius = '50%';
+                    markers.push(new maplibregl.Marker(el).setLngLat(pt).addTo(map));
                 }
-            } catch (e) { console.error("Search failed"); }
+            } catch (e) { console.error(e); }
         }
 
-        if (coords.length > 0) {
+        if (coords.length > 1) {
             const path = userLoc ? [userLoc, ...coords] : coords;
-            if (path.length > 1) drawRoute(path);
-            
+            const url = `https://api.openrouteservice.org/v2/directions/cycling-regular/geojson`;
+            const resp = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': O_KEY },
+                body: JSON.stringify({ coordinates: path })
+            });
+            const data = await resp.json();
+            if (map.getSource('route')) map.getSource('route').setData(data);
+            else {
+                map.addSource('route', { type: 'geojson', data: data });
+                map.addLayer({ id: 'route', type: 'line', source: 'route', paint: { 'line-color': '#00f2ff', 'line-width': 6 } });
+            }
             const bounds = new maplibregl.LngLatBounds();
             path.forEach(c => bounds.extend(c));
-            map.fitBounds(bounds, { padding: 60 });
+            map.fitBounds(bounds, { padding: 50 });
         }
     }
 
-    async function drawRoute(coordinates) {
-        const url = `https://api.openrouteservice.org/v2/directions/cycling-regular/geojson`;
-        const resp = await fetch(url, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'Authorization': O_KEY },
-            body: JSON.stringify({ coordinates: coordinates })
-        });
-        const data = await resp.json();
-        
-        if (map.getSource('route')) {
-            map.getSource('route').setData(data);
-        } else {
-            map.addSource('route', { type: 'geojson', data: data });
-            map.addLayer({
-                id: 'route', type: 'line', source: 'route',
-                paint: { 'line-color': '#00f2ff', 'line-width': 6 }
-            });
-        }
-    }
-
-    map.on('load', () => { geolocate.trigger(); });
+    map.on('load', () => { 
+        geolocate.trigger();
+        map.resize(); // This ensures the map fills its half correctly
+    });
 </script>
 </body>
 </html>
