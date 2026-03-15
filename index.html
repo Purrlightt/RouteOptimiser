@@ -2,21 +2,21 @@
 <html>
 
 <head>
-    <title>CityPost Pro - Garbsen</title>
+    <title>CityPost All-Garbsen</title>
     <meta name="viewport" content="initial-scale=1,maximum-scale=1,user-scalable=no">
     <script src="https://unpkg.com/maplibre-gl@3.0.0/dist/maplibre-gl.js"></script>
     <link href="https://unpkg.com/maplibre-gl@3.0.0/dist/maplibre-gl.css" rel="stylesheet" />
     <style>
         :root {
-            --blue: #007bff;
-            --red: #ff3b30;
+            --accent: #ffcc00;
+            --bg: #111;
         }
 
         body {
             margin: 0;
             padding: 0;
-            font-family: -apple-system, sans-serif;
-            background: #000;
+            font-family: sans-serif;
+            background: var(--bg);
             color: white;
         }
 
@@ -32,57 +32,63 @@
             top: 10px;
             left: 10px;
             right: 10px;
-            background: rgba(20, 20, 20, 0.95);
-            padding: 15px;
-            border-radius: 15px;
+            background: rgba(30, 30, 30, 0.9);
+            padding: 12px;
+            border-radius: 12px;
             z-index: 10;
             border: 1px solid #444;
         }
 
         textarea {
             width: 100%;
-            height: 80px;
-            background: #333;
-            color: white;
+            height: 60px;
+            background: #222;
+            color: #fff;
             border: 1px solid #555;
-            border-radius: 8px;
-            padding: 10px;
-            font-size: 16px;
+            border-radius: 6px;
+            padding: 8px;
+            font-size: 14px;
             box-sizing: border-box;
         }
 
-        button {
-            background: var(--blue);
-            color: white;
-            border: none;
-            padding: 15px;
-            border-radius: 8px;
-            width: 100%;
-            font-weight: bold;
-            font-size: 16px;
-            margin-top: 10px;
+        .controls {
+            display: flex;
+            gap: 8px;
+            margin-top: 8px;
         }
 
-        #status {
-            font-size: 11px;
-            color: #aaa;
-            margin-bottom: 5px;
-            font-family: monospace;
+        button {
+            flex: 1;
+            padding: 12px;
+            border-radius: 6px;
+            border: none;
+            font-weight: bold;
+            cursor: pointer;
+        }
+
+        .btn-go {
+            background: var(--accent);
+            color: black;
+        }
+
+        .btn-clear {
+            background: #444;
+            color: white;
         }
 
         .house-marker {
-            background: var(--red);
+            background: #ff3b30;
             color: white;
-            width: 24px;
-            height: 24px;
+            width: 28px;
+            height: 28px;
             border-radius: 50%;
-            border: 3px solid white;
+            border: 2px solid white;
             display: flex;
             align-items: center;
             justify-content: center;
             font-weight: bold;
-            font-size: 10px;
-            box-shadow: 0 0 10px rgba(0, 0, 0, 0.5);
+            font-size: 12px;
+            box-shadow: 0 0 15px rgba(255, 59, 48, 0.5);
         }
     </style>
 </head>
@@ -90,9 +96,11 @@
 <body>
 
     <div id="ui">
-        <div id="status">30827 / 30823 READY</div>
-        <textarea id="addressInput" placeholder="Lübeckerstr 3&#10;Beethovenstr 6&#10;Rote Reihe 19"></textarea>
-        <button onclick="startDelivery()">GENERATE POSTAL ROUTE</button>
+        <textarea id="addressInput" placeholder="Paste all 308xx addresses here..."></textarea>
+        <div class="controls">
+            <button class="btn-go" onclick="startDelivery()">START ROUTE</button>
+            <button class="btn-clear" onclick="location.reload()">CLEAR ALL</button>
+        </div>
     </div>
     <div id="map"></div>
 
@@ -103,9 +111,9 @@
         const map = new maplibregl.Map({
             container: 'map',
             style: `https://api.maptiler.com/maps/streets-v2-dark/style.json?key=${KEY}`,
-            center: [9.6105, 52.4187],
-            zoom: 16,
-            pitch: 45
+            center: [9.598, 52.428], // Better center for all of Garbsen
+            zoom: 13,
+            pitch: 30
         });
 
         const geolocate = new maplibregl.GeolocateControl({
@@ -115,67 +123,57 @@
         });
         map.addControl(geolocate);
 
-        let currentMarkers = [];
+        let markers = [];
 
         async function startDelivery() {
             const lines = document.getElementById('addressInput').value.split('\n').filter(l => l.trim().length > 0);
-            const coordinates = [];
-            const status = document.getElementById('status');
+            const coords = [];
 
-            // Clear old pins
-            currentMarkers.forEach(m => m.remove());
-            currentMarkers = [];
-
-            for (let rawLine of lines) {
-                status.innerText = "Targeting House: " + rawLine;
-
-                // WE SPLIT THE ADDRESS FOR MAX PRECISION
-                const parts = rawLine.trim().split(' ');
-                const number = parts.pop(); // Take the last word (the house number)
-                const street = parts.join(' '); // Everything else is the street
-
-                // MapTiler Geocoding is faster and has better German house data
-                const url = `https://api.maptiler.com/geocoding/${encodeURIComponent(street + ' ' + number + ', Garbsen')}.json?key=${KEY}&bbox=9.55,52.38,9.75,52.46&fuzzy=false`;
+            for (let line of lines) {
+                // Expanded search to include all of Garbsen and nearby Seelze/Langenhagen
+                const url = `https://api.maptiler.com/geocoding/${encodeURIComponent(line + ', Garbsen, Germany')}.json?key=${KEY}&fuzzy=false`;
 
                 try {
                     const resp = await fetch(url);
                     const data = await resp.json();
-
                     if (data.features && data.features.length > 0) {
-                        // We look for the result that has 'house' or 'address' accuracy
-                        const bestResult = data.features[0];
-                        const coord = bestResult.center;
-                        coordinates.push(coord);
+                        const feature = data.features[0];
+                        const pt = feature.center;
+                        coords.push(pt);
 
+                        // Create marker with "Tap to Finish" feature
                         const el = document.createElement('div');
                         el.className = 'house-marker';
-                        el.innerText = number;
+                        el.innerText = line.match(/\d+/); // Just the number
 
-                        const marker = new maplibregl.Marker(el).setLngLat(coord).addTo(map);
-                        currentMarkers.push(marker);
+                        const m = new maplibregl.Marker(el).setLngLat(pt).addTo(map);
+
+                        // Tap a house to mark it as DONE
+                        el.addEventListener('click', () => {
+                            if (confirm("Delivery finished at " + line + "?")) {
+                                m.remove();
+                            }
+                        });
+                        markers.push(m);
                     }
                 } catch (e) { console.error(e); }
             }
 
-            if (coordinates.length > 0) {
-                status.innerText = "Route Locked.";
-                drawBikePath(coordinates);
-                geolocate.trigger(); // This turns on the "Blue Dot" instantly
+            if (coords.length > 1) {
+                drawBikeRoute(coords);
+                geolocate.trigger();
             }
         }
 
-        async function drawBikePath(coords) {
-            // We use ORS for the actual "Bike Line" calculation
-            const body = { "coordinates": coords, "instructions": false };
+        async function drawBikeRoute(coords) {
             const url = `https://api.openrouteservice.org/v2/directions/cycling-regular/geojson`;
-
             const resp = await fetch(url, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'Authorization': ORS_KEY },
-                body: JSON.stringify(body)
+                body: JSON.stringify({ "coordinates": coords })
             });
-
             const data = await resp.json();
+
             if (map.getSource('route')) {
                 map.getSource('route').setData(data);
             } else {
@@ -184,13 +182,13 @@
                     id: 'route',
                     type: 'line',
                     source: 'route',
-                    paint: { 'line-color': '#007bff', 'line-width': 4 }
+                    paint: { 'line-color': '#ffcc00', 'line-width': 5, 'line-opacity': 0.8 }
                 });
             }
 
             const bounds = new maplibregl.LngLatBounds();
             coords.forEach(c => bounds.extend(c));
-            map.fitBounds(bounds, { padding: 120 });
+            map.fitBounds(bounds, { padding: 100 });
         }
     </script>
 </body>
