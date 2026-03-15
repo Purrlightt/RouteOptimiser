@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>CityPost Final 308xx</title>
+    <title>CityPost PLZ-Master</title>
     <link rel="stylesheet" href="style.css">
     <script src="config.js"></script>
     <script src="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.js"></script>
@@ -12,82 +12,103 @@
 <body>
 
 <div id="map"></div>
-<div id="ui-deck">
-    <div class="cyber-card">
-        <div id="gps-status" style="font-size:10px; color:#00f2ff; margin-bottom:5px;">GPS: SEARCHING...</div>
-        <textarea id="addressInput" placeholder="Lübecker Str 3&#10;Beethovenstr 6"></textarea>
-        <button class="btn-main" onclick="startEngine()">START ROUTE</button>
+
+<div id="ui-panel">
+    <div class="input-group">
+        <input type="text" id="streetInput" placeholder="Street + No (e.g. Lübecker 3)">
+        <select id="plzSelect">
+            <option value="30823">30823 (Alt-G)</option>
+            <option value="30826">30826 (Oster)</option>
+            <option value="30827">30827 (Beren)</option>
+        </select>
+        <button onclick="addToQueue()" style="background:var(--neon); color:#000; padding:0 15px; border-radius:8px; font-weight:bold;">+</button>
     </div>
+
+    <div id="addressQueue" class="queue-list">
+        </div>
+
+    <button class="btn-main" onclick="generateRoute()">CALCULATE OPTIMAL ROUTE</button>
 </div>
 
 <script>
     const T_KEY = CONFIG.MAPTILER_KEY;
     const O_KEY = CONFIG.ORS_KEY;
     let userLoc = null;
+    let queue = [];
     let markers = [];
 
     const map = new maplibregl.Map({
         container: 'map',
         style: `https://api.maptiler.com/maps/streets-v2-dark/style.json?key=${T_KEY}`,
-        center: [9.617, 52.415], zoom: 16
+        center: [9.61, 52.41], zoom: 14
     });
 
     const geolocate = new maplibregl.GeolocateControl({
         positionOptions: { enableHighAccuracy: true },
-        trackUserLocation: true, showUserHeading: true
+        trackUserLocation: true
     });
-    map.addControl(geolocate, 'top-right');
+    map.addControl(geolocate);
+    geolocate.on('geolocate', (e) => { userLoc = [e.coords.longitude, e.coords.latitude]; });
 
-    geolocate.on('geolocate', (e) => { 
-        userLoc = [e.coords.longitude, e.coords.latitude];
-        document.getElementById('gps-status').innerText = "GPS: LOCKED";
-        document.getElementById('gps-status').style.color = "#00ff00";
-    });
+    function addToQueue() {
+        const street = document.getElementById('streetInput').value.trim();
+        const plz = document.getElementById('plzSelect').value;
+        if (!street) return;
 
-    // Forced search logic for Alt-Garbsen accuracy
-    async function getPreciseCoord(line) {
-        // HARD-FIX for the building you need:
-        if (line.toLowerCase().includes("lübecker") && line.includes("3")) {
-            return [9.61712, 52.41585]; // Exact rooftop for 30823 Lübecker Str. 3
-        }
-
-        const clean = line.replace(/str(\.|\s|$)/i, " Straße ").trim();
-        const url = `https://api.maptiler.com/geocoding/${encodeURIComponent(clean + ', 30823 Garbsen')}.json?key=${T_KEY}&limit=1&bbox=9.59,52.40,9.65,52.44`;
-        
-        try {
-            const r = await fetch(url);
-            const d = await r.json();
-            return d.features.length > 0 ? d.features[0].center : null;
-        } catch (e) { return null; }
+        queue.push({ street, plz });
+        updateQueueUI();
+        document.getElementById('streetInput').value = ""; // Clear input
     }
 
-    async function startEngine() {
-        const lines = document.getElementById('addressInput').value.split('\n').filter(l => l.trim().length > 0);
+    function updateQueueUI() {
+        const list = document.getElementById('addressQueue');
+        list.innerHTML = queue.map((item, index) => `
+            <div class="queue-item">
+                <span><b>${item.plz}</b> - ${item.street}</span>
+                <span class="remove-btn" onclick="removeItem(${index})">X</span>
+            </div>
+        `).join('');
+    }
+
+    function removeItem(index) {
+        queue.splice(index, 1);
+        updateQueueUI();
+    }
+
+    async function generateRoute() {
+        if (queue.length === 0) return alert("Add some streets first!");
+        
         let coords = [];
         markers.forEach(m => m.remove()); markers = [];
 
-        for (let line of lines) {
-            const pt = await getPreciseCoord(line);
-            if (pt) {
-                coords.push(pt);
-                const el = document.createElement('div');
-                el.className = 'house-marker';
-                el.innerHTML = `<span>${coords.length}</span>`;
-                markers.push(new maplibregl.Marker(el).setLngLat(pt).addTo(map));
-            }
+        for (let item of queue) {
+            // THE FIX: We force the geocoder to only look in the chosen PLZ
+            const query = encodeURIComponent(`${item.street}, ${item.plz} Garbsen, Germany`);
+            const url = `https://api.maptiler.com/geocoding/${query}.json?key=${T_KEY}&limit=1`;
+            
+            try {
+                const r = await fetch(url);
+                const d = await r.json();
+                if (d.features && d.features.length > 0) {
+                    const pt = d.features[0].center;
+                    coords.push(pt);
+                    
+                    const el = document.createElement('div');
+                    el.className = 'house-marker';
+                    el.innerHTML = `<span>${coords.length}</span>`;
+                    const m = new maplibregl.Marker(el).setLngLat(pt).addTo(map);
+                    markers.push(m);
+                }
+            } catch (e) { console.error("Search failed"); }
         }
 
         if (coords.length > 0) {
-            // Include User Position as the start point
             const path = userLoc ? [userLoc, ...coords] : coords;
             if (path.length > 1) drawRoute(path);
             
-            // Auto-zoom to show everything
             const bounds = new maplibregl.LngLatBounds();
             path.forEach(c => bounds.extend(c));
             map.fitBounds(bounds, { padding: 60 });
-        } else {
-            alert("No valid addresses found in 30823/30827!");
         }
     }
 
@@ -111,10 +132,7 @@
         }
     }
 
-    map.on('load', () => { 
-        geolocate.trigger(); 
-        map.resize(); 
-    });
+    map.on('load', () => { geolocate.trigger(); });
 </script>
 </body>
 </html>
