@@ -3,102 +3,51 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>CityPost Turbo V3</title>
-    
+    <title>CityPost Debug Pro</title>
     <script src="config.js"></script>
     <script src="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.js"></script>
     <link href="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.css" rel="stylesheet" />
-
     <style>
-        :root { --neon: #00f2ff; --purple: #7000ff; --bg: #000000; }
-        
-        body, html { 
-            margin: 0; padding: 0; width: 100%; height: 100%; 
-            background: var(--bg); color: #ffffff; font-family: sans-serif; 
-            overflow: hidden;
-        }
-
-        #app-container { display: flex; flex-direction: column; height: 100vh; }
-        
-        /* Map Area */
-        #map { flex: 1; width: 100%; z-index: 1; }
-
-        /* UI Panel - Forced Visibility */
+        :root { --neon: #00f2ff; --purple: #7000ff; }
+        body, html { margin: 0; padding: 0; width: 100%; height: 100%; background: #000; color: #fff; font-family: sans-serif; overflow: hidden; }
+        #map { position: absolute; top: 0; width: 100%; height: 55%; z-index: 1; }
         #ui-panel {
-            height: 45%; background: #111111; border-top: 2px solid var(--neon);
-            display: flex; flex-direction: column; padding: 12px; z-index: 99999;
-            box-sizing: border-box;
+            position: fixed; bottom: 0; left: 0; right: 0; height: 45%;
+            background: #111; border-top: 2px solid var(--neon);
+            display: flex; flex-direction: column; padding: 12px; z-index: 99999; box-sizing: border-box;
         }
-
         .input-group { display: flex; gap: 8px; margin-bottom: 10px; }
-        
-        input { 
-            flex: 2; background: #222; color: #fff; border: 1px solid #444; 
-            padding: 12px; border-radius: 8px; font-size: 16px; outline: none;
-        }
-
-        select { 
-            flex: 1; background: #222; color: var(--neon); border: 1px solid #444; 
-            border-radius: 8px; font-weight: bold;
-        }
-
-        /* FIXED TEXT VISIBILITY */
-        .queue-list {
-            flex: 1; overflow-y: auto; background: #000000; border-radius: 8px;
-            border: 1px solid #333; margin-bottom: 10px;
-        }
-
-        .queue-item {
-            display: flex; justify-content: space-between; padding: 12px;
-            border-bottom: 1px solid #222; font-size: 15px; 
-            color: #ffffff !important; /* Forces white text */
-            font-weight: 500;
-        }
-
+        input { flex: 2; background: #222; color: #fff; border: 1px solid #444; padding: 12px; border-radius: 8px; font-size: 16px; outline: none; }
+        select { flex: 1; background: #222; color: var(--neon); border: 1px solid #444; border-radius: 8px; }
+        .queue-list { flex: 1; overflow-y: auto; background: #000; border-radius: 8px; border: 1px solid #333; margin-bottom: 10px; }
+        .queue-item { display: flex; justify-content: space-between; padding: 12px; border-bottom: 1px solid #222; color: #ffffff !important; font-size: 14px; }
         .btn-row { display: flex; gap: 8px; }
-        
-        button { 
-            padding: 14px; border: none; border-radius: 10px; 
-            font-weight: 800; text-transform: uppercase; cursor: pointer; 
-            font-size: 11px;
-        }
-
+        button { padding: 14px; border: none; border-radius: 10px; font-weight: 800; cursor: pointer; text-transform: uppercase; font-size: 11px; }
         .btn-add { background: var(--neon); color: #000; }
         .btn-load { background: #333; color: #fff; border: 1px solid var(--neon); }
         .btn-go { flex: 2; background: linear-gradient(90deg, var(--neon), var(--purple)); color: #fff; }
         .btn-clear { background: #400; color: #f88; }
-
-        /* Marker Style */
-        .house-marker {
-            width: 28px; height: 28px; background: #000; border: 2px solid var(--neon);
-            border-radius: 50%; display: flex; align-items: center; justify-content: center;
-            color: var(--neon); font-weight: 900;
-        }
+        .house-marker { width: 28px; height: 28px; background: #000; border: 2px solid var(--neon); border-radius: 50%; display: flex; align-items: center; justify-content: center; color: var(--neon); font-weight: 900; }
     </style>
 </head>
 <body>
 
-<div id="app-container">
-    <div id="map"></div>
-    <div id="ui-panel">
-        <div class="input-group">
-            <input type="text" id="streetInput" placeholder="Street + No">
-            <select id="plzSelect">
-                <option value="30823">30823</option>
-                <option value="30826">30826</option>
-                <option value="30827">30827</option>
-            </select>
-            <button class="btn-add" onclick="addToQueue()">ADD</button>
-        </div>
-
-        <div id="addressQueue" class="queue-list">
-            </div>
-
-        <div class="btn-row">
-            <button class="btn-clear" onclick="clearList()">Clear</button>
-            <button class="btn-load" onclick="loadPins()">Load Pins</button>
-            <button class="btn-go" onclick="startRoute()">Start Route</button>
-        </div>
+<div id="map"></div>
+<div id="ui-panel">
+    <div class="input-group">
+        <input type="text" id="streetInput" placeholder="Street + No">
+        <select id="plzSelect">
+            <option value="30823">30823</option>
+            <option value="30826">30826</option>
+            <option value="30827">30827</option>
+        </select>
+        <button class="btn-add" onclick="addToQueue()">ADD</button>
+    </div>
+    <div id="addressQueue" class="queue-list"></div>
+    <div class="btn-row">
+        <button class="btn-clear" onclick="clearAll()">Clear</button>
+        <button class="btn-load" onclick="loadPins()">Load Pins</button>
+        <button class="btn-go" onclick="startRoute()">Start Route</button>
     </div>
 </div>
 
@@ -107,7 +56,6 @@
     const O_KEY = CONFIG.ORS_KEY;
     let userLoc = null, queue = [], markers = [];
 
-    // Initialize Map
     const map = new maplibregl.Map({
         container: 'map',
         style: `https://api.maptiler.com/maps/streets-v2-dark/style.json?key=${T_KEY}`,
@@ -119,119 +67,88 @@
         trackUserLocation: true, showUserHeading: true
     });
     map.addControl(geolocate);
-    
-    geolocate.on('geolocate', (e) => {
-        userLoc = [e.coords.longitude, e.coords.latitude];
-        console.log("GPS Lock:", userLoc);
-    });
+    geolocate.on('geolocate', (e) => userLoc = [e.coords.longitude, e.coords.latitude]);
 
     function addToQueue() {
-        const street = document.getElementById('streetInput').value.trim();
-        const plz = document.getElementById('plzSelect').value;
-        if (!street) return;
-        
-        queue.push({ street, plz, coords: null });
-        renderUI();
-        document.getElementById('streetInput').value = "";
+        const s = document.getElementById('streetInput').value.trim();
+        const p = document.getElementById('plzSelect').value;
+        if (s) { queue.push({ s, p, coords: null }); render(); document.getElementById('streetInput').value = ""; }
     }
 
-    function renderUI() {
-        const list = document.getElementById('addressQueue');
-        list.innerHTML = queue.map((item, i) => `
-            <div class="queue-item">
-                <span><b>${item.plz}</b> ${item.street} ${item.coords ? '✅' : '⏳'}</span>
-                <span onclick="removeItem(${i})" style="color:#ff4444; font-weight:bold;">REMOVE</span>
-            </div>
+    function clearAll() { queue = []; render(); markers.forEach(m => m.remove()); markers = []; if(map.getSource('route')) map.getSource('route').setData({type:'FeatureCollection',features:[]}); }
+
+    function render() {
+        document.getElementById('addressQueue').innerHTML = queue.map((item, i) => `
+            <div class="queue-item"><span><b>${item.p}</b> ${item.s} ${item.coords ? '✅' : ''}</span><span style="color:red" onclick="queue.splice(${i},1);render()">X</span></div>
         `).join('');
     }
 
-    function removeItem(i) {
-        queue.splice(i, 1);
-        renderUI();
-    }
-
-    function clearList() {
-        queue = [];
-        markers.forEach(m => m.remove());
-        markers = [];
-        renderUI();
-        if (map.getSource('route')) map.getSource('route').setData({type: 'FeatureCollection', features: []});
-    }
-
-    // BUTTON: LOAD PINS (Only drops pins, no route)
     async function loadPins() {
-        markers.forEach(m => m.remove());
-        markers = [];
-        
+        markers.forEach(m => m.remove()); markers = [];
         for (let i = 0; i < queue.length; i++) {
-            const query = encodeURIComponent(`${queue[i].street}, ${queue[i].plz} Garbsen, Germany`);
+            const url = `https://api.maptiler.com/geocoding/${encodeURIComponent(queue[i].s + ', ' + queue[i].p + ' Garbsen')}.json?key=${T_KEY}&limit=1`;
             try {
-                const r = await fetch(`https://api.maptiler.com/geocoding/${query}.json?key=${T_KEY}&limit=1`);
+                const r = await fetch(url);
                 const d = await r.json();
-                if (d.features && d.features.length > 0) {
-                    const pt = d.features[0].center;
-                    queue[i].coords = pt; // Save for the route
-                    
-                    const el = document.createElement('div');
-                    el.className = 'house-marker';
-                    el.innerHTML = i + 1;
-                    const m = new maplibregl.Marker(el).setLngLat(pt).addTo(map);
-                    markers.push(m);
+                if (d.features.length > 0) {
+                    queue[i].coords = d.features[0].center;
+                    const el = document.createElement('div'); el.className = 'house-marker'; el.innerHTML = i + 1;
+                    markers.push(new maplibregl.Marker(el).setLngLat(queue[i].coords).addTo(map));
                 }
-            } catch (e) { console.error("Pin failed"); }
+            } catch (e) { console.error("Geocode failed"); }
         }
-        renderUI();
+        render();
     }
 
-    // BUTTON: START ROUTE (Calculates optimal path from userLoc)
     async function startRoute() {
-        const validStops = queue.filter(q => q.coords).map(q => q.coords);
-        if (validStops.length === 0) return alert("Please Load Pins first!");
-        if (!userLoc) return alert("Waiting for GPS... Make sure Location is ON.");
+        const stops = queue.filter(q => q.coords).map(q => q.coords);
+        if (stops.length === 0 || !userLoc) return alert("Load Pins and wait for GPS lock!");
 
         try {
-            // 1. Get Optimized Sequence
+            // STEP 1: Optimization
             const optResp = await fetch(`https://api.openrouteservice.org/optimization`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'Authorization': O_KEY },
                 body: JSON.stringify({
-                    jobs: validStops.map((c, i) => ({ id: i, location: c })),
+                    jobs: stops.map((c, i) => ({ id: i, location: c })),
                     vehicles: [{ id: 0, profile: "cycling-regular", start: userLoc }]
                 })
             });
-            const optData = await optResp.json();
-            const optimizedPath = optData.routes[0].steps.map(s => s.location);
 
-            // 2. Get Directions Geometry
+            if (!optResp.ok) {
+                const err = await optResp.json();
+                throw new Error("Optimization Error: " + (err.error?.message || "Check API Key Permissions"));
+            }
+
+            const optData = await optResp.json();
+            const path = optData.routes[0].steps.map(s => s.location);
+
+            // STEP 2: Directions
             const routeResp = await fetch(`https://api.openrouteservice.org/v2/directions/cycling-regular/geojson`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'Authorization': O_KEY },
-                body: JSON.stringify({ coordinates: optimizedPath })
+                body: JSON.stringify({ coordinates: path })
             });
+
+            if (!routeResp.ok) throw new Error("Directions Error: Path too complex or unreachable.");
+
             const routeData = await routeResp.json();
-            
-            if (map.getSource('route')) {
-                map.getSource('route').setData(routeData);
-            } else {
+            if (map.getSource('route')) map.getSource('route').setData(routeData);
+            else {
                 map.addSource('route', { type: 'geojson', data: routeData });
-                map.addLayer({
-                    id: 'route', type: 'line', source: 'route',
-                    paint: { 'line-color': '#00f2ff', 'line-width': 5 }
-                });
+                map.addLayer({ id: 'route', type: 'line', source: 'route', paint: { 'line-color': '#00f2ff', 'line-width': 5 } });
             }
-            
-            // Zoom to fit route
+
             const bounds = new maplibregl.LngLatBounds();
-            optimizedPath.forEach(c => bounds.extend(c));
+            path.forEach(c => bounds.extend(c));
             map.fitBounds(bounds, { padding: 50 });
 
-        } catch (e) { alert("Routing error. Check internet."); }
+        } catch (e) {
+            alert(e.message); // THIS WILL NOW TELL YOU THE EXACT PROBLEM
+        }
     }
 
-    map.on('load', () => { 
-        geolocate.trigger();
-        map.resize(); 
-    });
+    map.on('load', () => { geolocate.trigger(); map.resize(); });
 </script>
 </body>
 </html>
