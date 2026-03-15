@@ -2,8 +2,8 @@
 <html lang="de">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>CityPost Ultra</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>CityPost TurboSync</title>
     <link rel="stylesheet" href="style.css">
     <script src="config.js"></script>
     <script src="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.js"></script>
@@ -12,13 +12,11 @@
 <body>
 
 <div id="map"></div>
-
 <div id="ui-deck">
     <div class="cyber-card">
-        <textarea id="addressInput" placeholder="Stops..."></textarea>
+        <textarea id="addressInput" placeholder="Lübecker Straße 3..."></textarea>
         <div class="btn-row">
-            <button class="btn-sat" onclick="toggleSatellite()">SAT</button>
-            <button class="btn-main" onclick="startEngine()">ROUTE</button>
+            <button class="btn-main" onclick="startEngine()">START ROUTE</button>
         </div>
     </div>
 </div>
@@ -32,7 +30,7 @@
     const map = new maplibregl.Map({
         container: 'map',
         style: `https://api.maptiler.com/maps/streets-v2-dark/style.json?key=${T_KEY}`,
-        center: [9.617, 52.415], zoom: 15, attributionControl: false
+        center: [9.617, 52.415], zoom: 16, attributionControl: false
     });
 
     const geolocate = new maplibregl.GeolocateControl({
@@ -40,77 +38,82 @@
         trackUserLocation: true, showUserHeading: true
     });
     map.addControl(geolocate, 'top-right');
-    geolocate.on('geolocate', (e) => { userLoc = [e.coords.longitude, e.coords.latitude]; });
+
+    // Capture location as soon as it's found
+    geolocate.on('geolocate', (e) => { 
+        userLoc = [e.coords.longitude, e.coords.latitude]; 
+        console.log("GPS Lock acquired.");
+    });
+
+    async function searchHouse(text) {
+        // We run TWO searches: one with spaces, one without (e.g., Lübeckerstr vs Lübecker Str)
+        const variants = [text, text.replace(/str(\.|\s|$)/i, " Straße ")];
+        let bestFeature = null;
+
+        for (let v of variants) {
+            const query = encodeURIComponent(v + ', 30823 Garbsen, Germany');
+            const r = await fetch(`https://api.maptiler.com/geocoding/${query}.json?key=${T_KEY}&limit=1&bbox=9.59,52.40,9.64,52.43`);
+            const d = await r.json();
+            
+            if (d.features && d.features.length > 0) {
+                // If the result is a specific "house" or "address", we stop immediately
+                if (d.features[0].place_type.includes('address')) return d.features[0].center;
+                bestFeature = d.features[0].center;
+            }
+        }
+        return bestFeature;
+    }
 
     async function startEngine() {
         const lines = document.getElementById('addressInput').value.split('\n').filter(l => l.trim().length > 0);
         let coords = [];
         markers.forEach(m => m.remove()); markers = [];
 
-        // Geocoding each address
-        for (let line of lines) {
-            // SPECIFIC FIX for Lübecker Str 3
-            let queryText = line + ', Garbsen, Germany';
-            if(line.toLowerCase().includes("lübecker")) queryText = line + ', Alt-Garbsen, Germany';
+        // Geocode everything in parallel for maximum speed
+        const searches = lines.map(line => searchHouse(line));
+        const results = await Promise.all(searches);
 
-            const url = `https://api.maptiler.com/geocoding/${encodeURIComponent(queryText)}.json?key=${T_KEY}&limit=1`;
-            
-            try {
-                const r = await fetch(url);
-                const d = await r.json();
-                if (d.features && d.features.length > 0) {
-                    const pt = d.features[0].center;
-                    coords.push(pt);
-                    const el = document.createElement('div');
-                    el.className = 'house-marker';
-                    el.innerHTML = `<span>${coords.length}</span>`;
-                    const m = new maplibregl.Marker(el).setLngLat(pt).addTo(map);
-                    markers.push(m);
-                }
-            } catch (e) { console.error("Error finding house"); }
-        }
+        results.forEach((pt, i) => {
+            if (pt) {
+                coords.push(pt);
+                const el = document.createElement('div');
+                el.className = 'house-marker';
+                el.innerHTML = `<span>${coords.length}</span>`;
+                markers.push(new maplibregl.Marker(el).setLngLat(pt).addTo(map));
+            }
+        });
 
-        if (coords.length > 1) {
-            // Always try to start the route from where you are standing
+        if (coords.length > 0) {
             const finalPath = userLoc ? [userLoc, ...coords] : coords;
-            drawRoute(finalPath);
+            if (finalPath.length > 1) drawRoute(finalPath);
         }
     }
 
     async function drawRoute(coordinates) {
         const url = `https://api.openrouteservice.org/v2/directions/cycling-regular/geojson`;
-        try {
-            const resp = await fetch(url, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'Authorization': O_KEY },
-                body: JSON.stringify({ coordinates: coordinates })
+        const resp = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': O_KEY },
+            body: JSON.stringify({ coordinates: coordinates })
+        });
+        const data = await resp.json();
+        
+        if (map.getSource('route')) {
+            map.getSource('route').setData(data);
+        } else {
+            map.addSource('route', { type: 'geojson', data: data });
+            map.addLayer({
+                id: 'route', type: 'line', source: 'route',
+                paint: { 'line-color': '#00f2ff', 'line-width': 6 }
             });
-            const data = await resp.json();
-            
-            if (map.getSource('route')) {
-                map.getSource('route').setData(data);
-            } else {
-                map.addSource('route', { type: 'geojson', data: data });
-                map.addLayer({
-                    id: 'route', type: 'line', source: 'route',
-                    paint: { 'line-color': '#00f2ff', 'line-width': 5 }
-                });
-            }
-            const bounds = new maplibregl.LngLatBounds();
-            coordinates.forEach(c => bounds.extend(c));
-            map.fitBounds(bounds, { padding: 60 });
-        } catch (e) { console.log("Routing error"); }
-    }
-
-    function toggleSatellite() {
-        const isSat = map.getStyle().name === 'Satellite';
-        map.setStyle(isSat 
-            ? `https://api.maptiler.com/maps/streets-v2-dark/style.json?key=${T_KEY}`
-            : `https://api.maptiler.com/maps/hybrid/style.json?key=${T_KEY}`);
+        }
+        const bounds = new maplibregl.LngLatBounds();
+        coordinates.forEach(c => bounds.extend(c));
+        map.fitBounds(bounds, { padding: 80 });
     }
 
     map.on('load', () => { 
-        geolocate.trigger(); 
+        geolocate.trigger(); // Instant GPS trigger
         map.resize(); 
     });
 </script>
