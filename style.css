@@ -1,62 +1,91 @@
 :root {
-    --accent: #00d2ff;
-    --bg: #0a0a0a;
-    --panel: rgba(20, 20, 20, 0.85);
-    --border: rgba(255, 255, 255, 0.1);
+    --neon-blue: #00f2ff;
+    --neon-purple: #7000ff;
+    --bg-dark: #050505;
+    --glass: rgba(15, 15, 15, 0.85);
 }
 
 body, html { 
     margin: 0; padding: 0; width: 100%; height: 100%; 
-    font-family: 'Inter', -apple-system, sans-serif; background: var(--bg);
-    color: white; overflow: hidden;
+    font-family: 'Segoe UI', Roboto, sans-serif;
+    background: var(--bg-dark); color: white; overflow: hidden;
 }
 
-#map { position: absolute; top: 0; bottom: 0; width: 100%; z-index: 1; }
+#map { 
+    position: absolute; top: 0; bottom: 0; width: 100%; 
+    z-index: 1; /* Map stays in background */
+}
 
+/* UI Wrapper - Positioned at bottom for easier thumb access */
 #ui-wrapper {
-    position: absolute; top: 15px; left: 15px; right: 15px;
-    z-index: 10; pointer-events: none;
+    position: absolute; 
+    bottom: 20px; left: 15px; right: 15px;
+    z-index: 9999; /* Force it to the very top layer */
+    display: flex; flex-direction: column; gap: 12px;
+    animation: slideUp 0.6s cubic-bezier(0.2, 1, 0.3, 1);
 }
 
-.glass-card {
-    pointer-events: auto;
-    background: var(--panel);
-    backdrop-filter: blur(20px);
-    border: 1px solid var(--border);
-    border-radius: 20px; padding: 18px;
-    box-shadow: 0 10px 40px rgba(0,0,0,0.8);
+.cyber-card {
+    background: var(--glass);
+    backdrop-filter: blur(25px) saturate(150%);
+    border: 1px solid rgba(0, 242, 255, 0.2);
+    border-radius: 24px; padding: 20px;
+    box-shadow: 0 15px 50px rgba(0,0,0,0.8), 0 0 20px rgba(0, 242, 255, 0.1);
 }
 
 textarea {
-    width: 100%; height: 75px; background: rgba(0,0,0,0.4); 
-    color: #fff; border: 1px solid #333; border-radius: 12px;
-    padding: 12px; font-size: 15px; box-sizing: border-box;
-    outline: none; transition: border 0.3s;
+    width: 100%; height: 90px;
+    background: rgba(0,0,0,0.6); color: var(--neon-blue);
+    border: 1px solid rgba(0, 242, 255, 0.3); border-radius: 16px;
+    padding: 14px; font-size: 16px; box-sizing: border-box;
+    outline: none; font-family: 'Monaco', monospace;
+    transition: all 0.3s ease;
 }
 
-textarea:focus { border-color: var(--accent); }
+textarea:focus {
+    border-color: var(--neon-blue);
+    box-shadow: 0 0 15px rgba(0, 242, 255, 0.2);
+}
 
-.button-row { display: flex; gap: 10px; margin-top: 12px; }
+.btn-row { display: flex; gap: 10px; margin-top: 15px; }
 
 button {
-    flex: 1; padding: 14px; border-radius: 12px;
-    font-weight: 700; border: none; cursor: pointer;
-    transition: all 0.2s; text-transform: uppercase; letter-spacing: 1px;
+    flex: 1; padding: 16px; border-radius: 14px;
+    font-weight: 800; border: none; cursor: pointer;
+    text-transform: uppercase; letter-spacing: 2px;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-.btn-primary { 
-    background: linear-gradient(135deg, #00d2ff 0%, #3a7bd5 100%); 
-    color: white; box-shadow: 0 4px 15px rgba(0, 210, 255, 0.3);
+.btn-primary {
+    background: linear-gradient(135deg, var(--neon-blue), var(--neon-purple));
+    color: white; box-shadow: 0 4px 20px rgba(0, 242, 255, 0.4);
 }
 
-.btn-dark { background: #222; color: #aaa; font-size: 11px; }
+.btn-primary:active { transform: scale(0.95); opacity: 0.9; }
 
+.btn-secondary {
+    background: rgba(255,255,255,0.05); color: #aaa;
+    border: 1px solid rgba(255,255,255,0.1);
+}
+
+/* Futuristic Marker */
 .house-marker {
-    background: var(--accent); color: #000;
-    width: 30px; height: 30px; border-radius: 10px;
+    width: 34px; height: 34px;
+    background: var(--neon-blue);
+    border: 2px solid white; border-radius: 8px;
     display: flex; align-items: center; justify-content: center;
-    font-weight: 800; font-size: 13px; transform: rotate(45deg);
-    border: 2px solid #fff; box-shadow: 0 0 15px rgba(0, 210, 255, 0.6);
+    color: black; font-weight: 900; font-size: 14px;
+    box-shadow: 0 0 15px var(--neon-blue);
+    animation: pulse 2s infinite;
 }
 
-.house-marker span { transform: rotate(-45deg); }
+@keyframes slideUp {
+    from { transform: translateY(100px); opacity: 0; }
+    to { transform: translateY(0); opacity: 1; }
+}
+
+@keyframes pulse {
+    0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(0, 242, 255, 0.7); }
+    70% { transform: scale(1.1); box-shadow: 0 0 0 10px rgba(0, 242, 255, 0); }
+    100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(0, 242, 255, 0); }
+}
