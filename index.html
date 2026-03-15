@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>CityPost Turbo Optimizer</title>
+    <title>CityPost Turbo Optimizer | Production</title>
     
     <script src="config.js"></script>
     <script src="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.js"></script>
@@ -75,9 +75,22 @@
 
     geolocate.on('geolocate', (e) => {
         userLoc = [e.coords.longitude, e.coords.latitude];
-        document.getElementById('status').innerText = "GPS: Locked | System Ready";
+        document.getElementById('status').innerText = "GPS: Locked | Ready";
         document.getElementById('status').style.color = "#00ff00";
     });
+
+    // LOAD SAVED DATA ON START
+    window.onload = () => {
+        const saved = localStorage.getItem('deliveryQueue');
+        if (saved) {
+            queue = JSON.parse(saved);
+            updateUI();
+            // Wait for map load to drop pins
+            map.on('load', () => {
+                queue.forEach((item, idx) => dropMarker(item.coords, idx + 1, item.id));
+            });
+        }
+    };
 
     async function addStop() {
         const street = document.getElementById('streetInput').value.trim();
@@ -85,8 +98,10 @@
         if (!street) return;
 
         document.getElementById('status').innerText = "Locating...";
-        const query = encodeURIComponent(`${street}, ${plz} Garbsen, Germany`);
-        const url = `https://api.maptiler.com/geocoding/${query}.json?key=${T_KEY}&limit=1&bbox=9.58,52.39,9.65,52.44`;
+        
+        // Improved query normalization for "Lübecker Straße" etc.
+        const cleanStreet = street.replace(/\s+/g, '+');
+        const url = `https://api.maptiler.com/geocoding/${encodeURIComponent(cleanStreet)},${plz}+Garbsen.json?key=${T_KEY}&limit=1&bbox=9.55,52.38,9.68,52.46`;
 
         try {
             const r = await fetch(url);
@@ -95,20 +110,25 @@
                 const pt = d.features[0].center;
                 const id = Date.now();
                 queue.push({ street, plz, coords: pt, id });
+                
+                saveData();
                 updateUI();
+                dropMarker(pt, queue.length, id);
+
                 document.getElementById('streetInput').value = "";
                 document.getElementById('status').innerText = "Added: " + street;
-                
-                // Drop pin
-                const el = document.createElement('div');
-                el.className = 'house-marker';
-                el.innerHTML = queue.length;
-                const m = new maplibregl.Marker(el).setLngLat(pt).addTo(map);
-                markers.push({ id, marker: m });
             } else {
-                document.getElementById('status').innerText = "Not found!";
+                document.getElementById('status').innerText = "Not found in " + plz;
             }
         } catch (e) { document.getElementById('status').innerText = "Search Error"; }
+    }
+
+    function dropMarker(pt, label, id) {
+        const el = document.createElement('div');
+        el.className = 'house-marker';
+        el.innerHTML = label;
+        const m = new maplibregl.Marker(el).setLngLat(pt).addTo(map);
+        markers.push({ id, marker: m });
     }
 
     function updateUI() {
@@ -126,6 +146,7 @@
             queue.splice(qIdx, 1);
             const mIdx = markers.findIndex(m => m.id === id);
             if (mIdx > -1) { markers[mIdx].marker.remove(); markers.splice(mIdx, 1); }
+            saveData();
             updateUI();
         }
     }
@@ -133,38 +154,51 @@
     function clearAll() {
         queue = []; markers.forEach(m => m.marker.remove()); markers = [];
         if (map.getSource('route')) map.getSource('route').setData({type:'FeatureCollection', features:[]});
+        localStorage.removeItem('deliveryQueue');
         updateUI();
         document.getElementById('status').innerText = "Cleared";
+    }
+
+    function saveData() {
+        localStorage.setItem('deliveryQueue', JSON.stringify(queue));
     }
 
     async function optimizeAndRoute() {
         if (!userLoc || queue.length === 0) return alert("Wait for GPS and add stops!");
         document.getElementById('status').innerText = "Optimizing Route...";
 
-        const jobs = queue.map((item, index) => ({ id: index, location: item.coords }));
-        
+        // Step 1: Optimization
         try {
-            // STEP 1: Optimization (TSP)
             const optResp = await fetch(`https://api.openrouteservice.org/optimization`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'Authorization': O_KEY },
+                headers: { 
+                    'Content-Type': 'application/json',
+                    'Authorization': O_KEY // Try O_KEY, if failed change to: 'Bearer ' + O_KEY
+                },
                 body: JSON.stringify({
-                    jobs: jobs,
+                    jobs: queue.map((item, index) => ({ id: index, location: item.coords })),
                     vehicles: [{ id: 0, profile: "cycling-regular", start: userLoc }]
                 })
             });
-            const optData = await optResp.json();
-            
-            // Extract the optimized coordinates in order
-            const steps = optData.routes[0].steps;
-            const optimizedCoords = steps.map(s => s.location);
 
-            // STEP 2: Draw the line
+            if (!optResp.ok) {
+                const err = await optResp.json();
+                throw new Error(err.error?.message || "Check API Keys");
+            }
+
+            const optData = await optResp.json();
+            const optimizedPath = optData.routes[0].steps.map(s => s.location);
+
+            // Step 2: Directions
             const routeResp = await fetch(`https://api.openrouteservice.org/v2/directions/cycling-regular/geojson`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'Authorization': O_KEY },
-                body: JSON.stringify({ coordinates: optimizedCoords })
+                headers: { 
+                    'Content-Type': 'application/json',
+                    'Authorization': O_KEY 
+                },
+                body: JSON.stringify({ coordinates: optimizedPath })
             });
+            
             const routeData = await routeResp.json();
 
             if (map.getSource('route')) map.getSource('route').setData(routeData);
@@ -174,16 +208,20 @@
             }
 
             const bounds = new maplibregl.LngLatBounds();
-            optimizedCoords.forEach(p => bounds.extend(p));
+            optimizedPath.forEach(p => bounds.extend(p));
             map.fitBounds(bounds, { padding: 50 });
-            document.getElementById('status').innerText = "Optimized Route Active!";
+            document.getElementById('status').innerText = "Delivery Order Optimized!";
+
         } catch (e) { 
-            alert("Routing Error: Check API Key/Network");
-            document.getElementById('status').innerText = "Error"; 
+            console.error(e);
+            document.getElementById('status').innerText = "API Error: " + e.message; 
         }
     }
 
-    map.on('load', () => { geolocate.trigger(); map.resize(); });
+    map.on('load', () => { 
+        geolocate.trigger();
+        map.resize(); 
+    });
 </script>
 </body>
 </html>
