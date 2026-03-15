@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>CityPost 308xx Master</title>
+    <title>CityPost 308xx Pro</title>
     <link rel="stylesheet" href="style.css">
     <script src="config.js"></script>
     <script src="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.js"></script>
@@ -11,23 +11,24 @@
 </head>
 <body>
 
-<div id="app-wrapper">
-    <div id="map"></div>
+<div id="map"></div>
 
-    <div id="ui-panel">
-        <div class="input-group">
-            <input type="text" id="streetInput" placeholder="Lübecker Str 3">
-            <select id="plzSelect">
-                <option value="30823">30823 (Alt-G)</option>
-                <option value="30826">30826 (Oster)</option>
-                <option value="30827">30827 (Beren)</option>
-            </select>
-            <button onclick="addToQueue()" style="background:var(--neon); border:none; border-radius:8px; padding:0 15px; font-weight:bold;">ADD</button>
-        </div>
+<div id="ui-panel">
+    <div class="input-row">
+        <input type="text" id="streetInput" placeholder="Lübecker Straße 3">
+        <select id="plzSelect">
+            <option value="30823">30823</option>
+            <option value="30826">30826</option>
+            <option value="30827">30827</option>
+        </select>
+        <button class="btn-add" onclick="addToQueue()">ADD</button>
+    </div>
 
-        <div id="addressQueue" class="queue-list"></div>
+    <div id="addressQueue" class="queue-container"></div>
 
-        <button class="btn-main" onclick="generateRoute()">CALCULATE OPTIMAL ROUTE</button>
+    <div class="action-row">
+        <button class="btn-clear" onclick="clearQueue()">Clear All</button>
+        <button class="btn-route" onclick="generateRoute()">Start Optimal Route</button>
     </div>
 </div>
 
@@ -41,14 +42,14 @@
     const map = new maplibregl.Map({
         container: 'map',
         style: `https://api.maptiler.com/maps/streets-v2-dark/style.json?key=${T_KEY}`,
-        center: [9.61, 52.41], zoom: 14
+        center: [9.617, 52.415], zoom: 15
     });
 
     const geolocate = new maplibregl.GeolocateControl({
         positionOptions: { enableHighAccuracy: true },
         trackUserLocation: true
     });
-    map.addControl(geolocate);
+    map.addControl(geolocate, 'top-right');
     geolocate.on('geolocate', (e) => { userLoc = [e.coords.longitude, e.coords.latitude]; });
 
     function addToQueue() {
@@ -60,12 +61,19 @@
         document.getElementById('streetInput').value = "";
     }
 
+    function clearQueue() {
+        queue = [];
+        updateUI();
+        markers.forEach(m => m.remove());
+        if (map.getSource('route')) map.getSource('route').setData({type: 'FeatureCollection', features: []});
+    }
+
     function updateUI() {
         const list = document.getElementById('addressQueue');
         list.innerHTML = queue.map((item, i) => `
             <div class="queue-item">
                 <span><b>${item.plz}</b> ${item.street}</span>
-                <span style="color:red; cursor:pointer;" onclick="removeItem(${i})">Remove</span>
+                <span style="color:#ff4444;" onclick="removeItem(${i})">X</span>
             </div>
         `).join('');
     }
@@ -78,7 +86,7 @@
     async function generateRoute() {
         if (queue.length === 0) return;
         let coords = [];
-        markers.forEach(m => m.remove()); markers = [];
+        markers.forEach(m => m.remove());
 
         for (let item of queue) {
             const query = encodeURIComponent(`${item.street}, ${item.plz} Garbsen, Germany`);
@@ -90,13 +98,14 @@
                     const pt = d.features[0].center;
                     coords.push(pt);
                     const el = document.createElement('div');
-                    el.style.width = '24px'; el.style.height = '24px'; el.style.background = '#00f2ff'; el.style.borderRadius = '50%';
+                    el.style.width = '18px'; el.style.height = '18px'; el.style.background = '#00f2ff'; 
+                    el.style.borderRadius = '50%'; el.style.border = '2px solid white';
                     markers.push(new maplibregl.Marker(el).setLngLat(pt).addTo(map));
                 }
             } catch (e) { console.error(e); }
         }
 
-        if (coords.length > 1) {
+        if (coords.length > 0) {
             const path = userLoc ? [userLoc, ...coords] : coords;
             const url = `https://api.openrouteservice.org/v2/directions/cycling-regular/geojson`;
             const resp = await fetch(url, {
@@ -108,7 +117,7 @@
             if (map.getSource('route')) map.getSource('route').setData(data);
             else {
                 map.addSource('route', { type: 'geojson', data: data });
-                map.addLayer({ id: 'route', type: 'line', source: 'route', paint: { 'line-color': '#00f2ff', 'line-width': 6 } });
+                map.addLayer({ id: 'route', type: 'line', source: 'route', paint: { 'line-color': '#00f2ff', 'line-width': 5 } });
             }
             const bounds = new maplibregl.LngLatBounds();
             path.forEach(c => bounds.extend(c));
@@ -118,7 +127,7 @@
 
     map.on('load', () => { 
         geolocate.trigger();
-        map.resize(); // This ensures the map fills its half correctly
+        map.resize(); 
     });
 </script>
 </body>
