@@ -1,101 +1,62 @@
 :root {
-    --primary: #ffcc00;
-    /* DHL/CityPost Yellow */
-    --danger: #ff3b30;
-    --bg: #121212;
-    --card: rgba(25, 25, 25, 0.9);
+    --accent: #00d2ff;
+    --bg: #0a0a0a;
+    --panel: rgba(20, 20, 20, 0.85);
+    --border: rgba(255, 255, 255, 0.1);
 }
 
-body,
-html {
-    margin: 0;
-    padding: 0;
-    width: 100%;
-    height: 100%;
-    font-family: -apple-system, sans-serif;
-    background: var(--bg);
-    overflow: hidden;
+body, html { 
+    margin: 0; padding: 0; width: 100%; height: 100%; 
+    font-family: 'Inter', -apple-system, sans-serif; background: var(--bg);
+    color: white; overflow: hidden;
 }
 
-#map {
-    position: absolute;
-    top: 0;
-    bottom: 0;
-    width: 100%;
-    z-index: 1;
+#map { position: absolute; top: 0; bottom: 0; width: 100%; z-index: 1; }
+
+#ui-wrapper {
+    position: absolute; top: 15px; left: 15px; right: 15px;
+    z-index: 10; pointer-events: none;
 }
 
-#ui-container {
-    position: absolute;
-    top: 10px;
-    left: 10px;
-    right: 10px;
-    z-index: 10;
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-}
-
-.glass-panel {
-    background: var(--card);
-    backdrop-filter: blur(15px);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: 12px;
-    padding: 12px;
-    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.6);
+.glass-card {
+    pointer-events: auto;
+    background: var(--panel);
+    backdrop-filter: blur(20px);
+    border: 1px solid var(--border);
+    border-radius: 20px; padding: 18px;
+    box-shadow: 0 10px 40px rgba(0,0,0,0.8);
 }
 
 textarea {
-    width: 100%;
-    height: 60px;
-    background: #000;
-    color: #fff;
-    border: 1px solid #444;
-    border-radius: 8px;
-    padding: 10px;
-    font-size: 15px;
-    box-sizing: border-box;
-    resize: none;
+    width: 100%; height: 75px; background: rgba(0,0,0,0.4); 
+    color: #fff; border: 1px solid #333; border-radius: 12px;
+    padding: 12px; font-size: 15px; box-sizing: border-box;
+    outline: none; transition: border 0.3s;
 }
 
-.btn-group {
-    display: flex;
-    gap: 6px;
-    margin-top: 8px;
-}
+textarea:focus { border-color: var(--accent); }
+
+.button-row { display: flex; gap: 10px; margin-top: 12px; }
 
 button {
-    flex: 1;
-    padding: 12px;
-    border-radius: 8px;
-    font-weight: 700;
-    border: none;
-    cursor: pointer;
+    flex: 1; padding: 14px; border-radius: 12px;
+    font-weight: 700; border: none; cursor: pointer;
+    transition: all 0.2s; text-transform: uppercase; letter-spacing: 1px;
 }
 
-.btn-main {
-    background: var(--primary);
-    color: #000;
+.btn-primary { 
+    background: linear-gradient(135deg, #00d2ff 0%, #3a7bd5 100%); 
+    color: white; box-shadow: 0 4px 15px rgba(0, 210, 255, 0.3);
 }
 
-.btn-sat {
-    background: #444;
-    color: #fff;
-    font-size: 10px;
-    max-width: 60px;
-}
+.btn-dark { background: #222; color: #aaa; font-size: 11px; }
 
-/* The Marker */
 .house-marker {
-    background: var(--danger);
-    color: white;
-    width: 28px;
-    height: 28px;
-    border-radius: 50%;
-    border: 2px solid white;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-weight: bold;
-    font-size: 12px;
+    background: var(--accent); color: #000;
+    width: 30px; height: 30px; border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 800; font-size: 13px; transform: rotate(45deg);
+    border: 2px solid #fff; box-shadow: 0 0 15px rgba(0, 210, 255, 0.6);
 }
+
+.house-marker span { transform: rotate(-45deg); }
