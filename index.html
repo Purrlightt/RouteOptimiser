@@ -3,9 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>CityPost CyberSync</title>
+    <title>CityPost CyberRoute Pro</title>
     <link rel="stylesheet" href="style.css">
     <script src="config.js"></script>
+    <script src="https://unpkg.com/tesseract.js@v2.1.0/dist/tesseract.min.js"></script>
     <script src="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.js"></script>
     <link href="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.css" rel="stylesheet" />
 </head>
@@ -13,12 +14,18 @@
 
 <div id="map"></div>
 
+<div id="video-preview">
+    <video id="video" style="width: 100%; height: 100%; object-fit: cover;"></video>
+    <div id="scan-overlay"></div>
+    <button onclick="stopScanner()" style="position:absolute; bottom:40px; left:50%; transform:translateX(-50%); width:200px; background:red; color:white;">Cancel Scan</button>
+</div>
+
 <div id="ui-wrapper">
     <div class="cyber-card">
         <textarea id="addressInput" placeholder="LIST STOPS..."></textarea>
         <div class="btn-row">
-            <button class="btn-primary" onclick="startDelivery()">SYNC ROUTE</button>
-            <button class="btn-secondary" onclick="toggleSatellite()">SAT</button>
+            <button class="btn-scan" onclick="startScanner()">Scan Mail</button>
+            <button class="btn-primary" onclick="optimizeAndRoute()">Sort & Go</button>
         </div>
     </div>
 </div>
@@ -32,59 +39,98 @@
         style: `https://api.maptiler.com/maps/streets-v2-dark/style.json?key=${TILER_KEY}`,
         center: [9.605, 52.418],
         zoom: 15,
-        pitch: 60,
-        bearing: 0
+        pitch: 30 // Reduced tilt for better visibility
     });
 
-    // High Precision Navigation Tracking
     const geolocate = new maplibregl.GeolocateControl({
         positionOptions: { enableHighAccuracy: true },
-        trackUserLocation: true,
-        showUserHeading: true // This enables the Compass/Rotating Map
+        trackUserLocation: true, showUserHeading: true
     });
     map.addControl(geolocate, 'top-right');
 
     let markers = [];
 
-    window.onload = () => {
-        const saved = localStorage.getItem('last_route');
-        if (saved) document.getElementById('addressInput').value = saved;
-    };
+    // --- CAMERA SCANNER LOGIC ---
+    async function startScanner() {
+        const video = document.getElementById('video');
+        document.getElementById('video-preview').style.display = 'block';
+        const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+        video.srcObject = stream;
+        video.play();
 
-    async function startDelivery() {
+        // Start checking for text every 2 seconds
+        const interval = setInterval(async () => {
+            const canvas = document.createElement('canvas');
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            canvas.getContext('2d').drawImage(video, 0, 0);
+            
+            const result = await Tesseract.recognize(canvas, 'deu');
+            const text = result.data.text;
+            
+            // Look for street names or numbers
+            if (text.match(/\d+/) && text.length > 5) {
+                document.getElementById('addressInput').value += text.trim() + '\n';
+                if ("vibrate" in navigator) navigator.vibrate(100);
+                stopScanner();
+                clearInterval(interval);
+            }
+        }, 2000);
+    }
+
+    function stopScanner() {
+        const video = document.getElementById('video');
+        if (video.srcObject) video.srcObject.getTracks().forEach(track => track.stop());
+        document.getElementById('video-preview').style.display = 'none';
+    }
+
+    // --- SMART ROUTING & OPTIMIZATION ---
+    async function optimizeAndRoute() {
         const input = document.getElementById('addressInput').value;
-        localStorage.setItem('last_route', input);
-        
         const lines = input.split('\n').filter(l => l.trim().length > 0);
         const coords = [];
         markers.forEach(m => m.remove());
-        markers = [];
 
+        // Get coordinates for all stops
         for (let line of lines) {
-            // Priority geocoding for Alt-Garbsen
-            let searchQuery = line + ', Garbsen, Germany';
-            if (line.toLowerCase().includes('lübecker')) searchQuery = line + ', 30823 Garbsen, Germany';
+            // FIX for Lübecker Str 3: Forced to 30823 Alt-Garbsen
+            let query = line + ', Garbsen, Germany';
+            if (line.toLowerCase().includes('lübecker')) query = line + ', 30823 Garbsen, Germany';
 
-            const url = `https://api.maptiler.com/geocoding/${encodeURIComponent(searchQuery)}.json?key=${TILER_KEY}&fuzzy=false`;
+            const url = `https://api.maptiler.com/geocoding/${encodeURIComponent(query)}.json?key=${TILER_KEY}&fuzzy=false`;
+            const resp = await fetch(url);
+            const data = await resp.json();
             
-            try {
-                const resp = await fetch(url);
-                const data = await resp.json();
-                if (data.features && data.features.length > 0) {
-                    const pt = data.features[0].center;
-                    coords.push(pt);
-                    const el = document.createElement('div');
-                    el.className = 'house-marker';
-                    el.innerHTML = `<span>${line.match(/\d+/) || '!'}</span>`;
-                    const m = new maplibregl.Marker(el).setLngLat(pt).addTo(map);
-                    el.onclick = () => { if(confirm("DELIVERED?")) m.remove(); };
-                    markers.push(m);
-                }
-            } catch (e) { console.error(e); }
+            if (data.features && data.features.length > 0) {
+                coords.push(data.features[0].center);
+                const el = document.createElement('div');
+                el.className = 'house-marker';
+                el.innerHTML = `<span>${line.match(/\d+/) || '!'}</span>`;
+                markers.push(new maplibregl.Marker(el).setLngLat(data.features[0].center).addTo(map));
+            }
         }
 
-        if (coords.length > 1) drawPath(coords);
-        geolocate.trigger();
+        if (coords.length > 2) {
+            // CALL THE OPTIMIZER (Traveling Salesman Problem)
+            const optUrl = `https://api.openrouteservice.org/optimization`;
+            const body = {
+                jobs: coords.map((c, i) => ({ id: i, location: c })),
+                vehicles: [{ id: 0, profile: "cycling-regular", start: coords[0] }]
+            };
+            
+            const resp = await fetch(optUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': ORS_KEY },
+                body: JSON.stringify(body)
+            });
+            const optData = await resp.json();
+            
+            // Re-order based on optimization result
+            const sortedCoords = optData.routes[0].steps.map(s => s.location);
+            drawPath(sortedCoords);
+        } else {
+            drawPath(coords);
+        }
     }
 
     async function drawPath(coords) {
@@ -95,35 +141,13 @@
             body: JSON.stringify({ "coordinates": coords })
         });
         const data = await resp.json();
-        
-        if (map.getSource('route')) {
-            map.getSource('route').setData(data);
-        } else {
+        if (map.getSource('route')) map.getSource('route').setData(data);
+        else {
             map.addSource('route', { type: 'geojson', data: data });
-            map.addLayer({
-                id: 'route',
-                type: 'line',
-                source: 'route',
-                paint: { 'line-color': '#00f2ff', 'line-width': 6 }
-            });
+            map.addLayer({ id: 'route', type: 'line', source: 'route', paint: { 'line-color': '#00f2ff', 'line-width': 6 } });
         }
-        
-        const bounds = new maplibregl.LngLatBounds();
-        coords.forEach(c => bounds.extend(c));
-        map.fitBounds(bounds, { padding: 100 });
+        map.fitBounds(new maplibregl.LngLatBounds().extend(coords[0]).extend(coords[coords.length-1]), { padding: 100 });
     }
-
-    function toggleSatellite() {
-        const current = map.getStyle().name;
-        map.setStyle(current === 'Satellite' 
-            ? `https://api.maptiler.com/maps/streets-v2-dark/style.json?key=${TILER_KEY}`
-            : `https://api.maptiler.com/maps/hybrid/style.json?key=${TILER_KEY}`);
-    }
-
-    map.on('load', () => { 
-        geolocate.trigger();
-        setTimeout(() => map.resize(), 500); // Forces the map to recognize UI size
-    });
 </script>
 </body>
 </html>
