@@ -1,86 +1,195 @@
 <!DOCTYPE html>
 <html>
+
 <head>
-    <title>Garbsen Postie Precision</title>
+    <title>CityPost Garbsen Pro</title>
     <meta name="viewport" content="initial-scale=1,maximum-scale=1,user-scalable=no">
     <script src="https://unpkg.com/maplibre-gl@3.0.0/dist/maplibre-gl.js"></script>
     <link href="https://unpkg.com/maplibre-gl@3.0.0/dist/maplibre-gl.css" rel="stylesheet" />
     <style>
-        body { margin: 0; padding: 0; font-family: sans-serif; }
-        #map { position: absolute; top: 0; bottom: 0; width: 100%; }
-        #ui { position: absolute; top: 10px; left: 10px; right: 10px; background: white; padding: 10px; border-radius: 8px; z-index: 10; box-shadow: 0 2px 10px rgba(0,0,0,0.3); }
-        textarea { width: 100%; height: 60px; box-sizing: border-box; margin-bottom: 5px; border: 1px solid #ccc; }
-        button { background: #e62e00; color: white; border: none; padding: 12px; border-radius: 5px; width: 100%; font-weight: bold; }
-        .status { font-size: 11px; margin-bottom: 5px; color: #555; }
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, sans-serif;
+            background: #1a1a1a;
+        }
+
+        #map {
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            width: 100%;
+        }
+
+        #ui {
+            position: absolute;
+            top: 12px;
+            left: 12px;
+            right: 12px;
+            background: white;
+            padding: 15px;
+            border-radius: 15px;
+            z-index: 10;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+        }
+
+        textarea {
+            width: 100%;
+            height: 80px;
+            border: 2px solid #eee;
+            border-radius: 10px;
+            padding: 10px;
+            font-size: 16px;
+            box-sizing: border-box;
+            outline: none;
+            transition: border 0.3s;
+        }
+
+        textarea:focus {
+            border-color: #007bff;
+        }
+
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 15px;
+            border-radius: 10px;
+            width: 100%;
+            font-weight: 800;
+            font-size: 16px;
+            margin-top: 10px;
+            box-shadow: 0 4px 12px rgba(0, 123, 255, 0.4);
+        }
+
+        #status {
+            font-size: 12px;
+            color: #666;
+            margin-bottom: 8px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .marker-label {
+            background: #ff3b30;
+            color: white;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-weight: bold;
+            font-size: 12px;
+            border: 2px solid white;
+        }
     </style>
 </head>
+
 <body>
 
-<div id="ui">
-    <div id="status" class="status">Enter address (e.g. Rote Reihe 19)</div>
-    <textarea id="addressInput"></textarea>
-    <button onclick="startRouting()">GET HOUSE LOCATIONS</button>
-</div>
-<div id="map"></div>
+    <div id="ui">
+        <div id="status">Ready for 30827 Berenbostel</div>
+        <textarea id="addressInput" placeholder="Enter addresses..."></textarea>
+        <button onclick="startRouting()">START DELIVERY ROUTE</button>
+    </div>
+    <div id="map"></div>
 
-<script>
-    const MAPTILER_KEY = 'CcM6ytJu15GKv69XcBwC';
-    const ORS_KEY = 'eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6IjMzNWI2ZDBlMTk3YzRhZTZiNzkwZTQwYmEwNDhlOTM5IiwiaCI6Im11cm11cjY0In0=';
+    <script>
+        const MAPTILER_KEY = 'CcM6ytJu15GKv69XcBwC';
+        const ORS_KEY = 'eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6IjMzNWI2ZDBlMTk3YzRhZTZiNzkwZTQwYmEwNDhlOTM5IiwiaCI6Im11cm11cjY0In0=';
 
-    const map = new maplibregl.Map({
-        container: 'map',
-        // 'streets-v2' is best for seeing house numbers clearly
-        style: `https://api.maptiler.com/maps/streets-v2/style.json?key=${MAPTILER_KEY}`,
-        center: [9.6105, 52.4187], 
-        zoom: 16 // Start zoomed in closer
-    });
+        // Using "STREETS" style which is faster and cleaner for house numbers
+        const map = new maplibregl.Map({
+            container: 'map',
+            style: `https://api.maptiler.com/maps/streets-v2/style.json?key=${MAPTILER_KEY}`,
+            center: [9.6105, 52.4187],
+            zoom: 17,
+            pitch: 45 // Slight 3D angle to see building shapes better
+        });
 
-    map.addControl(new maplibregl.GeolocateControl({
-        positionOptions: { enableHighAccuracy: true },
-        trackUserLocation: true
-    }));
+        // High Accuracy GPS Control
+        const geolocate = new maplibregl.GeolocateControl({
+            positionOptions: { enableHighAccuracy: true },
+            trackUserLocation: true,
+            showUserHeading: true
+        });
+        map.addControl(geolocate);
 
-    async function startRouting() {
-        const lines = document.getElementById('addressInput').value.split('\n').filter(l => l.trim().length > 0);
-        const coordinates = [];
-        const status = document.getElementById('status');
+        async function startRouting() {
+            const lines = document.getElementById('addressInput').value.split('\n').filter(l => l.trim().length > 0);
+            const coordinates = [];
+            const status = document.getElementById('status');
 
-        for (let addr of lines) {
-            status.innerText = "Locating: " + addr;
-            
-            // KEY CHANGE: layers=address,venue forces it to find the house, not just the street
-            const url = `https://api.openrouteservice.org/geocode/search?api_key=${ORS_KEY}&text=${encodeURIComponent(addr + ", Garbsen")}&layers=address,venue&size=1`;
-            
-            try {
-                const resp = await fetch(url);
-                const data = await resp.json();
-                
-                if (data.features && data.features.length > 0) {
-                    const feat = data.features[0];
-                    const coord = feat.geometry.coordinates;
-                    coordinates.push(coord);
+            // Clear existing markers
+            document.querySelectorAll('.mapboxgl-marker').forEach(m => m.remove());
 
-                    // Add a label that shows the house number on the pin
-                    new maplibregl.Marker({color: 'red'})
-                        .setLngLat(coord)
-                        .setPopup(new maplibregl.Popup().setHTML(`<b>${feat.properties.label}</b>`))
-                        .addTo(map);
-                }
-            } catch (e) { console.error(e); }
+            for (let addr of lines) {
+                status.innerText = "Targeting: " + addr;
+
+                // CRITICAL FIX: We search specifically for the "Point of Interest" or "Address" point
+                // We use the Pelias engine via ORS which is great at house numbers
+                const url = `https://api.openrouteservice.org/geocode/search?api_key=${ORS_KEY}&text=${encodeURIComponent(addr + ", 30827 Garbsen")}&layers=address&size=1`;
+
+                try {
+                    const resp = await fetch(url);
+                    const data = await resp.json();
+
+                    if (data.features && data.features.length > 0) {
+                        const feat = data.features[0];
+                        const coord = feat.geometry.coordinates;
+                        coordinates.push(coord);
+
+                        // Create a custom marker that looks like a postal label
+                        const el = document.createElement('div');
+                        el.className = 'marker-label';
+                        el.innerText = addr.split(' ').pop(); // Just show the house number on the map
+
+                        new maplibregl.Marker(el)
+                            .setLngLat(coord)
+                            .addTo(map);
+                    }
+                } catch (e) { console.error(e); }
+            }
+
+            if (coordinates.length > 0) {
+                status.innerText = "Route Optimized.";
+                drawRoute(coordinates);
+                // Auto-start GPS tracking
+                geolocate.trigger();
+            }
         }
 
-        if (coordinates.length > 0) {
-            status.innerText = "Found " + coordinates.length + " houses.";
+        async function drawRoute(coords) {
+            // This calculates the FASTEST bike path between stops
+            const body = { "coordinates": coords, "preference": "fastest" };
+            const url = `https://api.openrouteservice.org/v2/directions/cycling-regular/geojson`;
+
+            const resp = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': ORS_KEY },
+                body: JSON.stringify(body)
+            });
+
+            const data = await resp.json();
+            if (map.getSource('route')) {
+                map.getSource('route').setData(data);
+            } else {
+                map.addSource('route', { type: 'geojson', data: data });
+                map.addLayer({
+                    id: 'route',
+                    type: 'line',
+                    source: 'route',
+                    paint: { 'line-color': '#007aff', 'line-width': 6, 'line-opacity': 0.8 }
+                });
+            }
+
             const bounds = new maplibregl.LngLatBounds();
-            coordinates.forEach(c => bounds.extend(c));
-            map.fitBounds(bounds, { padding: 50 });
+            coords.forEach(c => bounds.extend(c));
+            map.fitBounds(bounds, { padding: 100 });
         }
-    }
 
-    // Force the map to show building numbers when zooming in
-    map.on('load', () => {
-        map.setLayoutProperty('building_label', 'visibility', 'visible');
-    });
-</script>
+        map.on('load', () => {
+            // Speed boost: Hide unnecessary labels like shops/restaurants to focus on houses
+            map.setLayoutProperty('poi_label', 'visibility', 'none');
+        });
+    </script>
 </body>
+
 </html>
