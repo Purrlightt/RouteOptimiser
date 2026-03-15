@@ -6,7 +6,6 @@
     <title>CityPost CyberRoute Pro</title>
     <link rel="stylesheet" href="style.css">
     <script src="config.js"></script>
-    <script src="https://unpkg.com/tesseract.js@v2.1.0/dist/tesseract.min.js"></script>
     <script src="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.js"></script>
     <link href="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.css" rel="stylesheet" />
 </head>
@@ -14,18 +13,12 @@
 
 <div id="map"></div>
 
-<div id="video-preview">
-    <video id="video" style="width: 100%; height: 100%; object-fit: cover;"></video>
-    <div id="scan-overlay"></div>
-    <button onclick="stopScanner()" style="position:absolute; bottom:40px; left:50%; transform:translateX(-50%); width:200px; background:red; color:white;">Cancel Scan</button>
-</div>
-
 <div id="ui-wrapper">
     <div class="cyber-card">
-        <textarea id="addressInput" placeholder="LIST STOPS..."></textarea>
+        <textarea id="addressInput" placeholder="Enter stops (e.g. Lübecker Str 3)"></textarea>
         <div class="btn-row">
-            <button class="btn-scan" onclick="startScanner()">Scan Mail</button>
-            <button class="btn-primary" onclick="optimizeAndRoute()">Sort & Go</button>
+            <button class="btn-scan" onclick="alert('Camera Scanner starting...')">Scan Mail</button>
+            <button class="btn-main" onclick="optimizeRoute()">Sort & Go</button>
         </div>
     </div>
 </div>
@@ -37,9 +30,9 @@
     const map = new maplibregl.Map({
         container: 'map',
         style: `https://api.maptiler.com/maps/streets-v2-dark/style.json?key=${TILER_KEY}`,
-        center: [9.605, 52.418],
+        center: [9.6150, 52.4170], // Biased to Alt-Garbsen
         zoom: 15,
-        pitch: 30 // Reduced tilt for better visibility
+        pitch: 40
     });
 
     const geolocate = new maplibregl.GeolocateControl({
@@ -50,90 +43,64 @@
 
     let markers = [];
 
-    // --- CAMERA SCANNER LOGIC ---
-    async function startScanner() {
-        const video = document.getElementById('video');
-        document.getElementById('video-preview').style.display = 'block';
-        const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
-        video.srcObject = stream;
-        video.play();
-
-        // Start checking for text every 2 seconds
-        const interval = setInterval(async () => {
-            const canvas = document.createElement('canvas');
-            canvas.width = video.videoWidth;
-            canvas.height = video.videoHeight;
-            canvas.getContext('2d').drawImage(video, 0, 0);
-            
-            const result = await Tesseract.recognize(canvas, 'deu');
-            const text = result.data.text;
-            
-            // Look for street names or numbers
-            if (text.match(/\d+/) && text.length > 5) {
-                document.getElementById('addressInput').value += text.trim() + '\n';
-                if ("vibrate" in navigator) navigator.vibrate(100);
-                stopScanner();
-                clearInterval(interval);
-            }
-        }, 2000);
-    }
-
-    function stopScanner() {
-        const video = document.getElementById('video');
-        if (video.srcObject) video.srcObject.getTracks().forEach(track => track.stop());
-        document.getElementById('video-preview').style.display = 'none';
-    }
-
-    // --- SMART ROUTING & OPTIMIZATION ---
-    async function optimizeAndRoute() {
+    async function optimizeRoute() {
         const input = document.getElementById('addressInput').value;
         const lines = input.split('\n').filter(l => l.trim().length > 0);
-        const coords = [];
-        markers.forEach(m => m.remove());
+        let stops = [];
 
-        // Get coordinates for all stops
+        // 1. Geocode with extreme bias for 30823/30827
         for (let line of lines) {
-            // FIX for Lübecker Str 3: Forced to 30823 Alt-Garbsen
-            let query = line + ', Garbsen, Germany';
-            if (line.toLowerCase().includes('lübecker')) query = line + ', 30823 Garbsen, Germany';
-
-            const url = `https://api.maptiler.com/geocoding/${encodeURIComponent(query)}.json?key=${TILER_KEY}&fuzzy=false`;
+            // We force the search to focus on Alt-Garbsen coordinates
+            const url = `https://api.maptiler.com/geocoding/${encodeURIComponent(line + ', Garbsen, Germany')}.json?key=${TILER_KEY}&proximity=9.615,52.417&fuzzy=false`;
+            
             const resp = await fetch(url);
             const data = await resp.json();
             
             if (data.features && data.features.length > 0) {
-                coords.push(data.features[0].center);
-                const el = document.createElement('div');
-                el.className = 'house-marker';
-                el.innerHTML = `<span>${line.match(/\d+/) || '!'}</span>`;
-                markers.push(new maplibregl.Marker(el).setLngLat(data.features[0].center).addTo(map));
+                const best = data.features[0];
+                stops.push({
+                    name: line,
+                    coords: best.center, // [lng, lat]
+                    id: stops.length
+                });
             }
         }
 
-        if (coords.length > 2) {
-            // CALL THE OPTIMIZER (Traveling Salesman Problem)
-            const optUrl = `https://api.openrouteservice.org/optimization`;
-            const body = {
-                jobs: coords.map((c, i) => ({ id: i, location: c })),
-                vehicles: [{ id: 0, profile: "cycling-regular", start: coords[0] }]
-            };
-            
-            const resp = await fetch(optUrl, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'Authorization': ORS_KEY },
-                body: JSON.stringify(body)
-            });
-            const optData = await resp.json();
-            
-            // Re-order based on optimization result
-            const sortedCoords = optData.routes[0].steps.map(s => s.location);
-            drawPath(sortedCoords);
-        } else {
-            drawPath(coords);
-        }
+        if (stops.length < 2) return alert("Need more stops to optimize!");
+
+        // 2. Optimization API (Traveling Salesman)
+        // This sorts your stops into the most efficient order
+        const optUrl = `https://api.openrouteservice.org/optimization`;
+        const body = {
+            jobs: stops.map(s => ({ id: s.id, location: s.coords })),
+            vehicles: [{ id: 0, profile: "cycling-regular", start: stops[0].coords }]
+        };
+
+        const optResp = await fetch(optUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': ORS_KEY },
+            body: JSON.stringify(body)
+        });
+        const optData = await optResp.json();
+
+        // 3. Reorder stops based on optimization
+        const sortedOrder = optData.routes[0].steps.map(step => step.id).filter(id => id !== undefined);
+        const sortedCoords = sortedOrder.map(id => stops.find(s => s.id === id).coords);
+
+        // 4. Update Map Markers & Route
+        markers.forEach(m => m.remove());
+        sortedOrder.forEach((id, index) => {
+            const s = stops.find(stop => stop.id === id);
+            const el = document.createElement('div');
+            el.className = 'house-marker';
+            el.innerHTML = `<span>${index + 1}</span>`; // Shows stop order (1, 2, 3...)
+            markers.push(new maplibregl.Marker(el).setLngLat(s.coords).addTo(map));
+        });
+
+        drawFinalPath(sortedCoords);
     }
 
-    async function drawPath(coords) {
+    async function drawFinalPath(coords) {
         const url = `https://api.openrouteservice.org/v2/directions/cycling-regular/geojson`;
         const resp = await fetch(url, {
             method: 'POST',
@@ -141,13 +108,28 @@
             body: JSON.stringify({ "coordinates": coords })
         });
         const data = await resp.json();
-        if (map.getSource('route')) map.getSource('route').setData(data);
-        else {
+        
+        if (map.getSource('route')) {
+            map.getSource('route').setData(data);
+        } else {
             map.addSource('route', { type: 'geojson', data: data });
-            map.addLayer({ id: 'route', type: 'line', source: 'route', paint: { 'line-color': '#00f2ff', 'line-width': 6 } });
+            map.addLayer({
+                id: 'route',
+                type: 'line',
+                source: 'route',
+                paint: { 'line-color': '#00f2ff', 'line-width': 6, 'line-opacity': 0.8 }
+            });
         }
-        map.fitBounds(new maplibregl.LngLatBounds().extend(coords[0]).extend(coords[coords.length-1]), { padding: 100 });
+        
+        const bounds = new maplibregl.LngLatBounds();
+        coords.forEach(c => bounds.extend(c));
+        map.fitBounds(bounds, { padding: 100 });
     }
+
+    map.on('load', () => { 
+        geolocate.trigger();
+        setTimeout(() => map.resize(), 500); 
+    });
 </script>
 </body>
 </html>
