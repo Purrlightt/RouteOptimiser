@@ -3,9 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>CityPost Turbo Optimizer | Production</title>
+    <title>CityPost Turbo Optimizer</title>
     
-    <script src="config.js"></script>
     <script src="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.js"></script>
     <link href="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.css" rel="stylesheet" />
 
@@ -57,8 +56,11 @@
 </div>
 
 <script>
-    const T_KEY = CONFIG.MAPTILER_KEY;
-    const O_KEY = CONFIG.ORS_KEY;
+    // --- PASTE YOUR KEYS HERE DIRECTLY ---
+    const T_KEY = "CcM6ytJu15GKv69XcBwC"; 
+    const O_KEY = "eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6IjMzNWI2ZDBlMTk3YzRhZTZiNzkwZTQwYmEwNDhlOTM5IiwiaCI6Im11cm11cjY0In0";
+    // -------------------------------------
+
     let userLoc = null, queue = [], markers = [];
 
     const map = new maplibregl.Map({
@@ -75,64 +77,51 @@
 
     geolocate.on('geolocate', (e) => {
         userLoc = [e.coords.longitude, e.coords.latitude];
-        document.getElementById('status').innerText = "GPS: Locked | Ready";
+        document.getElementById('status').innerText = "GPS: Locked | System Ready";
         document.getElementById('status').style.color = "#00ff00";
     });
 
-    // LOAD SAVED DATA ON START
-    window.onload = () => {
-        const saved = localStorage.getItem('deliveryQueue');
-        if (saved) {
-            queue = JSON.parse(saved);
-            updateUI();
-            // Wait for map load to drop pins
-            map.on('load', () => {
-                queue.forEach((item, idx) => dropMarker(item.coords, idx + 1, item.id));
-            });
-        }
-    };
-
     async function addStop() {
+        if (T_KEY.includes("YOUR_")) return alert("Please paste your MapTiler Key into the code!");
+        
         const street = document.getElementById('streetInput').value.trim();
         const plz = document.getElementById('plzSelect').value;
         if (!street) return;
 
         document.getElementById('status').innerText = "Locating...";
-        
-        // Improved query normalization for "Lübecker Straße" etc.
         const cleanStreet = street.replace(/\s+/g, '+');
         const url = `https://api.maptiler.com/geocoding/${encodeURIComponent(cleanStreet)},${plz}+Garbsen.json?key=${T_KEY}&limit=1&bbox=9.55,52.38,9.68,52.46`;
 
         try {
             const r = await fetch(url);
+            if (!r.ok) throw new Error("Search API Blocked");
             const d = await r.json();
+            
             if (d.features && d.features.length > 0) {
                 const pt = d.features[0].center;
                 const id = Date.now();
                 queue.push({ street, plz, coords: pt, id });
                 
-                saveData();
                 updateUI();
-                dropMarker(pt, queue.length, id);
-
                 document.getElementById('streetInput').value = "";
                 document.getElementById('status').innerText = "Added: " + street;
+                
+                const el = document.createElement('div');
+                el.className = 'house-marker';
+                el.innerHTML = queue.length;
+                const m = new maplibregl.Marker(el).setLngLat(pt).addTo(map);
+                markers.push({ id, marker: m });
             } else {
                 document.getElementById('status').innerText = "Not found in " + plz;
             }
-        } catch (e) { document.getElementById('status').innerText = "Search Error"; }
-    }
-
-    function dropMarker(pt, label, id) {
-        const el = document.createElement('div');
-        el.className = 'house-marker';
-        el.innerHTML = label;
-        const m = new maplibregl.Marker(el).setLngLat(pt).addTo(map);
-        markers.push({ id, marker: m });
+        } catch (e) { 
+            document.getElementById('status').innerText = "Failed to fetch MapTiler. AdBlocker active?"; 
+            console.error(e);
+        }
     }
 
     function updateUI() {
-        document.getElementById('addressQueue').innerHTML = queue.map((item, i) => `
+        document.getElementById('addressQueue').innerHTML = queue.map((item) => `
             <div class="queue-item">
                 <span><b>${item.plz}</b> ${item.street}</span>
                 <span onclick="removeStop(${item.id})" style="color:var(--danger); cursor:pointer;">X</span>
@@ -146,7 +135,6 @@
             queue.splice(qIdx, 1);
             const mIdx = markers.findIndex(m => m.id === id);
             if (mIdx > -1) { markers[mIdx].marker.remove(); markers.splice(mIdx, 1); }
-            saveData();
             updateUI();
         }
     }
@@ -154,26 +142,26 @@
     function clearAll() {
         queue = []; markers.forEach(m => m.marker.remove()); markers = [];
         if (map.getSource('route')) map.getSource('route').setData({type:'FeatureCollection', features:[]});
-        localStorage.removeItem('deliveryQueue');
         updateUI();
         document.getElementById('status').innerText = "Cleared";
     }
 
-    function saveData() {
-        localStorage.setItem('deliveryQueue', JSON.stringify(queue));
-    }
-
     async function optimizeAndRoute() {
-        if (!userLoc || queue.length === 0) return alert("Wait for GPS and add stops!");
+        if (O_KEY.includes("YOUR_")) return alert("Please paste your ORS Key into the code!");
+        if (!userLoc) return alert("Wait for GPS lock!");
+        if (queue.length === 0) return alert("Add stops first!");
+
         document.getElementById('status').innerText = "Optimizing Route...";
 
-        // Step 1: Optimization
         try {
+            // STEP 1: Authorization Header Fix applied here
+            const authHeader = 'Bearer ' + O_KEY.trim(); 
+
             const optResp = await fetch(`https://api.openrouteservice.org/optimization`, {
                 method: 'POST',
                 headers: { 
                     'Content-Type': 'application/json',
-                    'Authorization': O_KEY // Try O_KEY, if failed change to: 'Bearer ' + O_KEY
+                    'Authorization': authHeader 
                 },
                 body: JSON.stringify({
                     jobs: queue.map((item, index) => ({ id: index, location: item.coords })),
@@ -182,22 +170,24 @@
             });
 
             if (!optResp.ok) {
-                const err = await optResp.json();
-                throw new Error(err.error?.message || "Check API Keys");
+                const errText = await optResp.text();
+                throw new Error("API Blocked Request: " + errText);
             }
 
             const optData = await optResp.json();
-            const optimizedPath = optData.routes[0].steps.map(s => s.location);
+            const optimizedCoords = optData.routes[0].steps.map(s => s.location);
 
-            // Step 2: Directions
+            // STEP 2: Directions
             const routeResp = await fetch(`https://api.openrouteservice.org/v2/directions/cycling-regular/geojson`, {
                 method: 'POST',
                 headers: { 
                     'Content-Type': 'application/json',
-                    'Authorization': O_KEY 
+                    'Authorization': authHeader 
                 },
-                body: JSON.stringify({ coordinates: optimizedPath })
+                body: JSON.stringify({ coordinates: optimizedCoords })
             });
+            
+            if (!routeResp.ok) throw new Error("Directions API Failed");
             
             const routeData = await routeResp.json();
 
@@ -208,20 +198,18 @@
             }
 
             const bounds = new maplibregl.LngLatBounds();
-            optimizedPath.forEach(p => bounds.extend(p));
+            optimizedCoords.forEach(p => bounds.extend(p));
             map.fitBounds(bounds, { padding: 50 });
-            document.getElementById('status').innerText = "Delivery Order Optimized!";
+            document.getElementById('status').innerText = "Optimized Route Active!";
 
         } catch (e) { 
             console.error(e);
-            document.getElementById('status').innerText = "API Error: " + e.message; 
+            alert("BROWSER BLOCKED THE REQUEST: \n\n1. Check if you have an AdBlocker on.\n2. Ensure you are on HTTPS.\n3. Verify your ORS key.");
+            document.getElementById('status').innerText = "CORS / Fetch Failed"; 
         }
     }
 
-    map.on('load', () => { 
-        geolocate.trigger();
-        map.resize(); 
-    });
+    map.on('load', () => { geolocate.trigger(); map.resize(); });
 </script>
 </body>
 </html>
